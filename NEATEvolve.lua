@@ -181,6 +181,11 @@ function getInputs()
 			end
 		end
 	end
+
+-- I WANT INPUTS TO POTENTIALLY INCLUDE PREVIOUS NEURONS
+	for n=1,network.neurons do
+		inputs[#inputs+1] = network.neurons[n]
+	end
 	
 	--mariovx = memory.read_s8(0x7B)
 	--mariovy = memory.read_s8(0x7D)
@@ -362,7 +367,7 @@ function evaluateNetwork(network, inputs)
 		end
 	end
 	
-	return outputs
+	return {outputs, network.neurons}
 end
 
 function crossover(g1, g2)
@@ -848,7 +853,7 @@ function evaluateCurrent()
 	-- CHANGING EVALUATE NETWORK TO OUTPUT A TABLE OF table[1] = controller and table[2] = neural state
 	netEval = evaluateNetwork(genome.network, inputs)
 	controller = netEval[1]
-	netState = netEval[2]
+	netStates = netEval[2]
 	
 	if controller["P1 Left"] and controller["P1 Right"] then
 		controller["P1 Left"] = false

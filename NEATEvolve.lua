@@ -334,14 +334,14 @@ function generateNetwork(genome)
 end
 
 function evaluateNetwork(network, inputs)
-	table.insert(inputs, 1)
-	if #inputs ~= Inputs then
+	table.insert(inputs[1], 1)
+	if #inputs[1] ~= Inputs then
 		console.writeline("Incorrect number of neural network inputs.")
 		return {}
 	end
 	
 	for i=1,Inputs do
-		network.neurons[i].value = inputs[i]
+		network.neurons[i].value = inputs[1][i]
 	end
 	
 	for _,neuron in pairs(network.neurons) do

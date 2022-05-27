@@ -845,7 +845,10 @@ function evaluateCurrent()
 	local genome = species.genomes[pool.currentGenome]
 
 	inputs = getInputs()
-	controller = evaluateNetwork(genome.network, inputs)
+	-- CHANGING EVALUATE NETWORK TO OUTPUT A TABLE OF table[1] = controller and table[2] = neural state
+	netEval = evaluateNetwork(genome.network, inputs)
+	controller = netEval[1]
+	netState = netEval[2]
 	
 	if controller["P1 Left"] and controller["P1 Right"] then
 		controller["P1 Left"] = false

@@ -33,6 +33,10 @@ InputSize = (BoxRadius*2+1)*(BoxRadius*2+1)
 
 Inputs = InputSize+1
 Outputs = #ButtonNames
+--MemorySize determines the number of frames that will be stored in MarI/O's working memory
+MemorySize = 5
+--MemoryInterval determines the number of frames between each stored frame in MarI/O's working memory (time resolution)
+MemoryInterval = 5
 
 Population = 300
 DeltaDisjoint = 2.0
@@ -304,6 +308,8 @@ end
 function generateNetwork(genome)
 	local network = {}
 	network.neurons = {}
+	--Initializing memory neuron table
+	network.memory = {}
 	
 	for i=1,Inputs do
 		network.neurons[i] = newNeuron()
@@ -311,6 +317,13 @@ function generateNetwork(genome)
 	
 	for o=1,Outputs do
 		network.neurons[MaxNodes+o] = newNeuron()
+	end
+
+	--Initializing memory neurons
+	for m=1,MemorySize do
+		for i=1,Inputs do
+			network.memory[(m-1)*MaxNodes+i] = newNeuron()
+		end
 	end
 	
 	table.sort(genome.genes, function (a,b)

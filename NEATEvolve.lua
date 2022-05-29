@@ -33,6 +33,10 @@ InputSize = (BoxRadius*2+1)*(BoxRadius*2+1)
 
 Inputs = InputSize+1
 Outputs = #ButtonNames
+--MemorySize determines the number of frames that will be stored in MarI/O's working memory
+MemorySize = 5
+--MemoryInterval determines the number of frames between each stored frame in MarI/O's working memory (time resolution)
+MemoryInterval = 5
 
 Population = 300
 DeltaDisjoint = 2.0
@@ -307,7 +311,19 @@ function generateNetwork(genome)
 	for o=1,Outputs do
 		network.neurons[MaxNodes+o] = newNeuron()
 	end
-	
+
+	--Initializing memory neurons
+	--output memory begins after forceBias neuron (170)
+	--input memory begins after output memory (176 for SMB, 178 for SMW)
+	for m=1,MemorySize do
+		--[[for i=1,Inputs do
+			network.neurons[m*Inputs+i] = newNeuron()
+		end]]
+		for o=1,Outputs do
+			network.neurons[--[[m*]]Inputs+(m-1)*Outputs+o] = newNeuron()
+		end
+	end
+
 	table.sort(genome.genes, function (a,b)
 		return (a.out < b.out)
 	end)
@@ -338,7 +354,7 @@ function evaluateNetwork(network, inputs)
 	for i=1,Inputs do
 		network.neurons[i].value = inputs[i]
 	end
-	
+
 	for _,neuron in pairs(network.neurons) do
 		local sum = 0
 		for j = 1,#neuron.incoming do
@@ -403,7 +419,7 @@ end
 function randomNeuron(genes, nonInput)
 	local neurons = {}
 	if not nonInput then
-		for i=1,Inputs do
+		for i=1,Inputs+MemorySize*Outputs do
 			neurons[i] = true
 		end
 	end
@@ -411,10 +427,10 @@ function randomNeuron(genes, nonInput)
 		neurons[MaxNodes+o] = true
 	end
 	for i=1,#genes do
-		if (not nonInput) or genes[i].into > Inputs then
+		if (not nonInput) or genes[i].into > Inputs+MemorySize*Outputs then
 			neurons[genes[i].into] = true
 		end
-		if (not nonInput) or genes[i].out > Inputs then
+		if (not nonInput) or genes[i].out > Inputs+MemorySize*Outputs then
 			neurons[genes[i].out] = true
 		end
 	end
@@ -457,16 +473,29 @@ function pointMutate(genome)
 	end
 end
 
+function point(genome)
+	local step = genome.mutationRates["step"]
+	
+	for i=1,#genome.genes do
+		local gene = genome.genes[i]
+		if math.random() < PerturbChance then
+			gene.weight = gene.weight + math.random() * step*2 - step
+		else
+			gene.weight = math.random()*4-2
+		end
+	end
+end
+
 function linkMutate(genome, forceBias)
 	local neuron1 = randomNeuron(genome.genes, false)
 	local neuron2 = randomNeuron(genome.genes, true)
 	 
 	local newLink = newGene()
-	if neuron1 <= Inputs and neuron2 <= Inputs then
+	if neuron1 <= Inputs+MemorySize*Outputs and neuron2 <= Inputs+MemorySize*Outputs then
 		--Both input nodes
 		return
 	end
-	if neuron2 <= Inputs then
+	if neuron2 <= Inputs+MemorySize*Outputs then
 		-- Swap output and input
 		local temp = neuron1
 		neuron1 = neuron2
@@ -475,10 +504,11 @@ function linkMutate(genome, forceBias)
 
 	newLink.into = neuron1
 	newLink.out = neuron2
+	
 	if forceBias then
 		newLink.into = Inputs
 	end
-	
+
 	if containsLink(genome.genes, newLink) then
 		return
 	end
@@ -845,6 +875,7 @@ function evaluateCurrent()
 	local genome = species.genomes[pool.currentGenome]
 
 	inputs = getInputs()
+
 	controller = evaluateNetwork(genome.network, inputs)
 	
 	if controller["P1 Left"] and controller["P1 Right"] then
@@ -857,6 +888,42 @@ function evaluateCurrent()
 	end
 
 	joypad.set(controller)
+
+
+--[[ temporary removal for Model 1.1
+	--Replace older memory with newer memory for input and output
+	for m=MemorySize,2,-1 do
+		for i=1,Inputs do
+			genome.network.neurons[m*Inputs+m*Outputs+i] = genome.network.neurons[(m-1)*Inputs+(m-1)*Outputs+i]
+		end
+		for o=1,Outputs do
+			genome.network.neurons[m*Inputs+(m-1)*Outputs+o] = genome.network.neurons[(m-1)*Inputs+(m-2)*Outputs+o]
+		end
+	end
+
+	--Replace newest memory with current input/output states
+	for i=1,Inputs do
+		genome.network.neurons[Inputs+Outputs+i] = genome.network.neurons[i]
+	end
+	for o=1,Outputs do
+		genome.network.neurons[Inputs+o] = genome.network.neurons[MaxNodes+o]
+	end
+]]
+
+	for m=MemorySize,2,-1 do
+		for o=1,Outputs do
+			genome.network.neurons[Inputs+(m-1)*Outputs+o] = genome.network.neurons[Inputs+(m-2)*Outputs+o]
+		end
+	end
+
+	for o=1,Outputs do
+		if genome.network.neurons[MaxNodes+o].value > 0 then
+			genome.network.neurons[Inputs+o].value = 1
+		else
+			genome.network.neurons[Inputs+o].value = 0
+		end
+	end
+
 end
 
 if pool == nil then

@@ -303,9 +303,6 @@ end
 function generateNetwork(genome)
 	local network = {}
 	network.neurons = {}
-	--Initializing input memory neuron and output memory neuron tables
-	network.imemory = {}
-	network.omemory = {}
 	
 	for i=1,Inputs do
 		network.neurons[i] = newNeuron()
@@ -315,13 +312,15 @@ function generateNetwork(genome)
 		network.neurons[MaxNodes+o] = newNeuron()
 	end
 
-	--Initializing memory neurons (input memory and output memory)
+	--Initializing memory neurons
+	--output memory begins after forceBias neuron (170)
+	--input memory begins after output memory (176 for SMB, 178 for SMW)
 	for m=1,MemorySize do
-		for i=1,Inputs do
-			network.imemory[(m-1)*MaxNodes+i] = newNeuron()
-		end
+		--[[for i=1,Inputs do
+			network.neurons[m*Inputs+i] = newNeuron()
+		end]]
 		for o=1,Outputs do
-			network.omemory[(m-1)*MaxNodes+o] = newNeuron()
+			network.neurons[--[[m*]]Inputs+(m-1)*Outputs+o] = newNeuron()
 		end
 	end
 	

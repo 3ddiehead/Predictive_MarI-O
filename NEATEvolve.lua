@@ -875,13 +875,15 @@ function evaluateCurrent()
 
 	joypad.set(controller)
 
+
+--[[ temporary removal for Model 1.1
 	--Replace older memory with newer memory for input and output
 	for m=MemorySize,2,-1 do
 		for i=1,Inputs do
 			network.neurons[m*Inputs+m*Outputs+i] = network.neurons[(m-1)*Inputs+(m-1)*Outputs+i]
 		end
 		for o=1,Outputs do
-			network.neurons[m*Inputs+(m-1)*Outputs+i] = network.neurons[(m-1)*Inputs+(m-2)*Outputs+i]
+			network.neurons[m*Inputs+(m-1)*Outputs+o] = network.neurons[(m-1)*Inputs+(m-2)*Outputs+o]
 		end
 	end
 
@@ -892,6 +894,18 @@ function evaluateCurrent()
 	for o=1,Outputs do
 		network.neurons[Inputs+o] = network.neurons[MaxNodes+o]
 	end
+]]
+
+	for m=MemorySize,2,-1 do
+		for o=1,Outputs do
+			network.neurons[Inputs+(m-1)*Outputs+o] = network.neurons[Inputs+(m-2)*Outputs+o]
+		end
+	end
+
+	for o=1,Outputs do
+		network.neurons[Inputs+o] = network.neurons[MaxNodes+o]
+	end
+
 end
 
 if pool == nil then

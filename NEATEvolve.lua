@@ -451,6 +451,19 @@ function randomNeuron(genes, nonInput)
 	return 0
 end
 
+function pointMutate(genome)
+	local step = genome.mutationRates["step"]
+	
+	for i=1,#genome.genes do
+		local gene = genome.genes[i]
+		if math.random() < PerturbChance then
+			gene.weight = gene.weight + math.random() * step*2 - step
+		else
+			gene.weight = math.random()*4-2
+		end
+	end
+end
+
 function containsLink(genes, link)
 	for i=1,#genes do
 		local gene = genes[i]

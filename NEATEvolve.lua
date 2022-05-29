@@ -323,7 +323,7 @@ function generateNetwork(genome)
 			network.neurons[--[[m*]]Inputs+(m-1)*Outputs+o] = newNeuron()
 		end
 	end
-	
+
 	table.sort(genome.genes, function (a,b)
 		return (a.out < b.out)
 	end)

@@ -185,11 +185,6 @@ function getInputs()
 			end
 		end
 	end
-
--- I WANT INPUTS TO POTENTIALLY INCLUDE PREVIOUS NEURONS
-	for n=1,network.neurons do
-		inputs[#inputs+1] = network.neurons[n]
-	end
 	
 	--mariovx = memory.read_s8(0x7B)
 	--mariovy = memory.read_s8(0x7D)
@@ -308,8 +303,9 @@ end
 function generateNetwork(genome)
 	local network = {}
 	network.neurons = {}
-	--Initializing memory neuron table
-	network.memory = {}
+	--Initializing input memory neuron and output memory neuron tables
+	network.imemory = {}
+	network.omemory = {}
 	
 	for i=1,Inputs do
 		network.neurons[i] = newNeuron()
@@ -319,10 +315,13 @@ function generateNetwork(genome)
 		network.neurons[MaxNodes+o] = newNeuron()
 	end
 
-	--Initializing memory neurons
+	--Initializing memory neurons (input memory and output memory)
 	for m=1,MemorySize do
 		for i=1,Inputs do
-			network.memory[(m-1)*MaxNodes+i] = newNeuron()
+			network.imemory[(m-1)*MaxNodes+i] = newNeuron()
+		end
+		for o=1,Outputs do
+			network.omemory[(m-1)*MaxNodes+o] = newNeuron()
 		end
 	end
 	
@@ -380,7 +379,7 @@ function evaluateNetwork(network, inputs)
 		end
 	end
 	
-	return {outputs, network.neurons}
+	return network.neurons
 end
 
 function crossover(g1, g2)
@@ -462,7 +461,7 @@ function containsLink(genes, link)
 	end
 end
 
-function pointMutate(genome)
+function point(genome)
 	local step = genome.mutationRates["step"]
 	
 	for i=1,#genome.genes do
@@ -863,10 +862,8 @@ function evaluateCurrent()
 	local genome = species.genomes[pool.currentGenome]
 
 	inputs = getInputs()
-	-- CHANGING EVALUATE NETWORK TO OUTPUT A TABLE OF table[1] = controller and table[2] = neural state
-	netEval = evaluateNetwork(genome.network, inputs)
-	controller = netEval[1]
-	netStates = netEval[2]
+
+	controller = evaluateNetwork(genome.network, inputs)
 	
 	if controller["P1 Left"] and controller["P1 Right"] then
 		controller["P1 Left"] = false

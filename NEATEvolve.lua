@@ -466,11 +466,12 @@ function evaluatePredictiveNetwork(network, playnetwork)
 		end
 	end
 	
-	--MAYBE HERE COULD BE A LOOP THAT MAKES THE PERCEPTUAL OUTPUT CERTAIN (1, -1, or 0) UNDER CERTAIN CONDITIONS, AND THE REST KINDA FOGGY.
-	--THE PROGRAM MIGHT FIGURE THIS OUT EASILY AS IS THOUGH.
+	prediction = {}
+	for n=1,Inputs+Outputs do
+		prediction[n] = network.neurons[(MemorySize+1)*(Inputs+Outputs)+n].value
+	end
 
-	--QUALITY EVALUATION MUST BE PERFORMED NOW RATHER THAN AT THE END OF THE RUN.
-
+	return prediction
 end
 
 function crossover(g1, g2)
@@ -977,9 +978,11 @@ function initializeRun()
 
 	for m=1,MemorySize+1 do
 		for i=1,Inputs do
-			predgenome.network[(m-1)*Inputs+(m-1)*Outputs+i]
+			predpool.species[predpool.currentSpecies].genomes[predpool.currentGenome].network.neurons[(m-1)*Inputs+(m-1)*Outputs+i].value = inputs[i]
 		end
 	end
+
+	prediction = evaluatePredictiveNetwork(predpool.species[predpool.currentSpecies].genomes[predpool.currentGenome].network, playgenome.network)
 
 	evaluateCurrent()
 end
@@ -989,8 +992,6 @@ function evaluateCurrent()
 	local playgenome = playspecies.genomes[playpool.currentGenome]
 
 	inputs = getInputs()
-
-	--HERE IS WHERE THE PREDICTION FITNESS SHOULD BE TESTED
 
 	controller = evaluatePerceptualNetwork(playgenome.network, inputs)
 	
@@ -1008,7 +1009,7 @@ function evaluateCurrent()
 	local predspecies = predpool.species[predpool.currentSpecies]
 	local predgenome = predspecies.genomes[predpool.currentGenome]
 
-	prediction = evaluatePredictiveNetwork(predgenome.network, playgenome.network, inputs)
+	prediction = evaluatePredictiveNetwork(predgenome.network, playgenome.network)
 
 end
 
@@ -1315,7 +1316,7 @@ while true do
 	end
 	
 	if playpool.currentFrame%5 == 0 then
-		evaluateCurrent()
+		evaluateCurrent() 
 	end
 
 	joypad.set(controller)

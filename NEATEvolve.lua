@@ -361,6 +361,16 @@ function generatePredictiveNetwork(genome)
 		end
 	end
 
+	--Initializing predictive output neurons
+	--Input and output prediction neurons begin after memory neurons, placement depends on the size of the MemorySize variable
+	--Potential addition is a PredSize variable, for predicting furthur in advance.
+	for i=1,Inputs do
+		network.neurons[(MemorySize+1)*Inputs+(MemorySize+1)*Outputs+i] = newNeuron()
+	end
+	for o=1,Outputs do
+		network.neurons[(MemorySize+2)*Inputs+(MemorySize+1)*Outputs+i] = newNeuron()
+	end
+
 	table.sort(genome.genes, function (a,b)
 		return (a.out < b.out)
 	end)
@@ -443,7 +453,6 @@ function evaluatePredictiveNetwork(network, playnetwork)
 		end
 	end
 
-	--[[ THIS MUST BE FORMED TO CREATE NEURONAL VALUES FOR 170 ITEMS
 	for _,neuron in pairs(network.neurons) do
 		local sum = 0
 		for j = 1,#neuron.incoming do
@@ -457,18 +466,11 @@ function evaluatePredictiveNetwork(network, playnetwork)
 		end
 	end
 	
-	local outputs = {}
-	for o=1,Outputs do
-		local button = "P1 " .. ButtonNames[o]
-		if network.neurons[MaxNodes+o].value > 0 then
-			outputs[button] = true
-		else
-			outputs[button] = false
-		end
-	end
-	
-	return outputs
-	]]
+	--MAYBE HERE COULD BE A LOOP THAT MAKES THE PERCEPTUAL OUTPUT CERTAIN (1, -1, or 0) UNDER CERTAIN CONDITIONS, AND THE REST KINDA FOGGY.
+	--THE PROGRAM MIGHT FIGURE THIS OUT EASILY AS IS THOUGH.
+
+	--QUALITY EVALUATION MUST BE PERFORMED NOW RATHER THAN AT THE END OF THE RUN.
+
 end
 
 function crossover(g1, g2)

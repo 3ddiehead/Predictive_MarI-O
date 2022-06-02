@@ -966,7 +966,7 @@ function initializeRun()
 	local playgenome = playspecies.genomes[playpool.currentGenome]
 	generatePerceptualNetwork(playgenome)
 	local predspecies = predpool.species[predpool.currentSpecies]
-	local predgenome = predspecies.genomes[predpool.currentGenome]
+	predgenome = predspecies.genomes[predpool.currentGenome]
 	generatePredictiveNetwork(predgenome)
 
 	inputs = getInputs()
@@ -978,11 +978,13 @@ function initializeRun()
 
 	for m=1,MemorySize+1 do
 		for i=1,Inputs do
-			predpool.species[predpool.currentSpecies].genomes[predpool.currentGenome].network.neurons[(m-1)*Inputs+(m-1)*Outputs+i].value = inputs[i]
+			predgenome.network.neurons[(m-1)*Inputs+(m-1)*Outputs+i].value = inputs[i]
 		end
 	end
 
-	prediction = evaluatePredictiveNetwork(predpool.species[predpool.currentSpecies].genomes[predpool.currentGenome].network, playgenome.network)
+	predgenome.fitness = 0
+	predgenome.fiteration = 0
+	prediction = evaluatePredictiveNetwork(predgenome.network, playgenome.network)
 
 	evaluateCurrent()
 end
@@ -1006,8 +1008,13 @@ function evaluateCurrent()
 
 	joypad.set(controller)
 
-	local predspecies = predpool.species[predpool.currentSpecies]
-	local predgenome = predspecies.genomes[predpool.currentGenome]
+	predgenome.fiteration = predgenome.fiteration + 1
+
+	local unfitness = 0
+	for n=1,Inputs+Outputs do
+		unfitness = unfitness + math.abs(prediction[n] - predgenome.network.neurons[(MemorySize+1)*(Inputs+Outputs)+n].value)
+	end
+	predgenome.fitness = unifitness/predgenome.fiteration
 
 	prediction = evaluatePredictiveNetwork(predgenome.network, playgenome.network)
 

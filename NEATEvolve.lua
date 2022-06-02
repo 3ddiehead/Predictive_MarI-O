@@ -897,28 +897,28 @@ function addToSpecies(pool, child)
 	end
 end
 
-function newGeneration()
+function newPlayGeneration()
 	cullSpecies(false) -- Cull the bottom half of each species
 	rankGlobally()
 	removeStaleSpecies()
 	rankGlobally()
-	for s = 1,#pool.species do
-		local species = pool.species[s]
+	for s = 1,#playpool.species do
+		local species = playpool.species[s]
 		calculateAverageFitness(species)
 	end
 	removeWeakSpecies()
 	local sum = totalAverageFitness()
 	local children = {}
-	for s = 1,#pool.species do
-		local species = pool.species[s]
+	for s = 1,#playpool.species do
+		local species = playpool.species[s]
 		breed = math.floor(species.averageFitness / sum * Population) - 1
 		for i=1,breed do
 			table.insert(children, breedChild(species))
 		end
 	end
 	cullSpecies(true) -- Cull all but the top member of each species
-	while #children + #pool.species < Population do
-		local species = pool.species[math.random(1, #pool.species)]
+	while #children + #playpool.species < Population do
+		local species = playpool.species[math.random(1, #pool.species)]
 		table.insert(children, breedChild(species))
 	end
 	for c=1,#children do
@@ -926,9 +926,43 @@ function newGeneration()
 		addToSpecies(child)
 	end
 	
-	pool.generation = pool.generation + 1
+	playpool.generation = playpool.generation + 1
 	
-	writeFile("backup." .. pool.generation .. "." .. forms.gettext(saveLoadFile))
+	writeFile("backup." .. playpool.generation .. "." .. forms.gettext(saveLoadFile))
+end
+
+function newPredGeneration()
+	cullSpecies(false) -- Cull the bottom half of each species
+	rankGlobally()
+	removeStaleSpecies()
+	rankGlobally()
+	for s = 1,#predpool.species do
+		local species = predpool.species[s]
+		calculateAverageFitness(species)
+	end
+	removeWeakSpecies()
+	local sum = totalAverageFitness()
+	local children = {}
+	for s = 1,#predpool.species do
+		local species = predpool.species[s]
+		breed = math.floor(species.averageFitness / sum * Population) - 1
+		for i=1,breed do
+			table.insert(children, breedChild(species))
+		end
+	end
+	cullSpecies(true) -- Cull all but the top member of each species
+	while #children + #predpool.species < Population do
+		local species = predpool.species[math.random(1, #predpool.species)]
+		table.insert(children, breedChild(species))
+	end
+	for c=1,#children do
+		local child = children[c]
+		addToSpecies(child)
+	end
+	
+	predpool.generation = predpool.generation + 1
+	
+	writeFile("backup." .. predpool.generation .. "." .. forms.gettext(saveLoadFile))
 end
 	
 function initializePool()
@@ -1025,7 +1059,7 @@ if pool == nil then
 end
 
 
-function nextGenome()
+function nextPlayGenome()
 	playpool.currentGenome = playpool.currentGenome + 1
 	if playpool.currentGenome > #playpool.species[playpool.currentSpecies].genomes then
 		playpool.currentGenome = 1
@@ -1033,6 +1067,18 @@ function nextGenome()
 		if playpool.currentSpecies > #playpool.species then
 			newGeneration()
 			playpool.currentSpecies = 1
+		end
+	end
+end
+
+function nextPredGenome()
+	predpool.currentGenome = predpool.currentGenome + 1
+	if predpool.currentGenome > #predpool.species[predpool.currentSpecies].genomes then
+		predpool.currentGenome = 1
+		predpool.currentSpecies = predpool.currentSpecies+1
+		if predpool.currentSpecies > #predpool.species then
+			newGeneration()
+			predpool.currentSpecies = 1
 		end
 	end
 end

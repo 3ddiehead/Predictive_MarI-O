@@ -368,7 +368,7 @@ function generatePredictiveNetwork(genome)
 		network.neurons[MaxNodes+i] = newNeuron()
 	end
 	for o=1,Outputs do
-		network.neurons[MaxNodes+Inputs+i] = newNeuron()
+		network.neurons[MaxNodes+Inputs+o] = newNeuron()
 	end
 
 	table.sort(genome.genes, function (a,b)
@@ -923,7 +923,7 @@ function newGeneration(pool)
 	end
 	for c=1,#children do
 		local child = children[c]
-		addToSpecies(child)
+		addToSpecies(pool, child)
 	end
 	
 	pool.generation = pool.generation + 1
@@ -964,7 +964,7 @@ function initializeRun()
 	
 	--Initialize networks for both the player pool and predictor pool.
 	local playspecies = playpool.species[playpool.currentSpecies]
-	playgenome = playspecies.genomes[playpool.currentGenome]
+	local playgenome = playspecies.genomes[playpool.currentGenome]
 	generatePerceptualNetwork(playgenome)
 	local predspecies = predpool.species[predpool.currentSpecies]
 	predgenome = predspecies.genomes[predpool.currentGenome]
@@ -1012,11 +1012,11 @@ function evaluateCurrent()
 
 	predgenome.fiteration = predgenome.fiteration + 1
 
-	local unfitness = 0
+	local unfitness = predgenome.fitness
 	for n=1,Inputs+Outputs do
-		unfitness = unfitness + math.abs(prediction[n] - predgenome.network.neurons[(MemorySize+1)*(Inputs+Outputs)+n].value)
+		unfitness = unfitness + math.abs(prediction[n] - predgenome.network.neurons[n].value)
 	end
-	predgenome.fitness = unifitness/predgenome.fiteration
+	predgenome.fitness = 2*(Inputs+Outputs) - unfitness/predgenome.fiteration
 
 	prediction = evaluatePredictiveNetwork(predgenome.network, playgenome.network)
 
@@ -1024,6 +1024,7 @@ end
 
 if playpool == nil or predpool == nil then
 	initializePool()
+	console.writeline(#playpool,"\n",#predpool)
 end
 
 function nextGenome(pool)
@@ -1317,12 +1318,12 @@ while true do
 	local playgenome = playspecies.genomes[playpool.currentGenome]
 
 	local predspecies = predpool.species[predpool.currentSpecies]
-	local predgenome = predspecies.genomes[predpool.currentGenome]
+	predgenome = predspecies.genomes[predpool.currentGenome]
 	
 	if forms.ischecked(showNetwork) then
 		displayGenome(playgenome)
 	end
-	
+
 	if playpool.currentFrame%5 == 0 then
 		evaluateCurrent() 
 	end
@@ -1368,10 +1369,19 @@ while true do
 			writeFile(playpool, "backup." .. playpool.generation .. "." .. forms.gettext(saveLoadFile))
 		end
 		
+		if predgenome.fitness > predpool.maxFitness then
+			predpool.maxFitness = predgenome.fitness
+			forms.settext(maxFitnessLabel, "Max Fitness: " .. math.floor(predpool.maxFitness))
+			writeFile(predpool, "backup." .. predpool.generation .. "." .. forms.gettext(saveLoadFile))
+		end
+
 		--Write out current run statistics
-		console.writeline("Gen " .. playpool.generation .. " species " .. playpool.currentSpecies .. " genome " .. playpool.currentGenome .. " fitness: " .. fitness)
+		console.writeline("Gen " .. predpool.generation .. " species " .. predpool.currentSpecies .. " genome " .. predpool.currentGenome .. " fitness: " .. predgenome.fitness)
 		playpool.currentSpecies = 1
 		playpool.currentGenome = 1
+
+		predpool.currentSpecies = 1
+		predpool.currentGenome = 1
 
 		--iterate over play and pred genomes until genome without fitness measurement
 		while fitnessAlreadyMeasured(playpool) do

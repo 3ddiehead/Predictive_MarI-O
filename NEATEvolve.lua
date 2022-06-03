@@ -314,7 +314,7 @@ function generatePerceptualNetwork(genome)
 
 	--Initializing prediction differential neurons
 	for d=1,Inputs do
-		network.neurons[Inputs+i] = newNeuron()
+		network.neurons[Inputs+d] = newNeuron()
 	end
 
 	table.sort(genome.genes, function (a,b)
@@ -928,7 +928,7 @@ function newGeneration(pool)
 	
 	pool.generation = pool.generation + 1
 	
-	writeFile("backup." .. pool.generation .. "." .. forms.gettext(saveLoadFile))
+	writeFile(pool, "backup." .. pool.generation .. "." .. forms.gettext(saveLoadFile))
 end
 	
 function initializePool()
@@ -964,7 +964,7 @@ function initializeRun()
 	
 	--Initialize networks for both the player pool and predictor pool.
 	local playspecies = playpool.species[playpool.currentSpecies]
-	local playgenome = playspecies.genomes[playpool.currentGenome]
+	playgenome = playspecies.genomes[playpool.currentGenome]
 	generatePerceptualNetwork(playgenome)
 	local predspecies = predpool.species[predpool.currentSpecies]
 	predgenome = predspecies.genomes[predpool.currentGenome]
@@ -1172,7 +1172,7 @@ function displayGenome(genome)
 	end
 end
 
-function writeFile(filename)
+function writeFile(pool, filename)
         local file = io.open(filename, "w")
 	file:write(pool.generation .. "\n")
 	file:write(pool.maxFitness .. "\n")
@@ -1207,12 +1207,12 @@ function writeFile(filename)
         file:close()
 end
 
-function savePool()
+function savePool(pool)
 	local filename = forms.gettext(saveLoadFile)
-	writeFile(filename)
+	writeFile(pool, filename)
 end
 
-function loadFile(filename)
+function loadFile(pool, filename)
         local file = io.open(filename, "r")
 	pool = newPool()
 	pool.generation = file:read("*number")
@@ -1252,19 +1252,19 @@ function loadFile(filename)
 	end
         file:close()
 	
-	while fitnessAlreadyMeasured() do
-		nextGenome()
+	while fitnessAlreadyMeasured(pool) do
+		nextGenome(pool)
 	end
 	initializeRun()
 	pool.currentFrame = pool.currentFrame + 1
 end
  
-function loadPool()
+function loadPool(pool)
 	local filename = forms.gettext(saveLoadFile)
-	loadFile(filename)
+	loadFile(pool, filename)
 end
 
-function playTop()
+function playTop(pool)
 	local maxfitness = 0
 	local maxs, maxg
 	for s,species in pairs(pool.species) do
@@ -1290,12 +1290,12 @@ function onExit()
 	forms.destroy(form)
 end
 
-writeFile("temp.pool")
+writeFile(playpool,"temp.pool")
 
 event.onexit(onExit)
 
 form = forms.newform(200, 260, "Fitness")
-maxFitnessLabel = forms.label(form, "Max Fitness: " .. math.floor(pool.maxFitness), 5, 8)
+maxFitnessLabel = forms.label(form, "Max Fitness: " .. math.floor(playpool.maxFitness), 5, 8)
 showNetwork = forms.checkbox(form, "Show Map", 5, 30)
 showMutationRates = forms.checkbox(form, "Show M-Rates", 5, 52)
 restartButton = forms.button(form, "Restart", initializePool, 5, 77)
@@ -1365,7 +1365,7 @@ while true do
 		if fitness > playpool.maxFitness then
 			playpool.maxFitness = fitness
 			forms.settext(maxFitnessLabel, "Max Fitness: " .. math.floor(playpool.maxFitness))
-			writeFile("backup." .. playpool.generation .. "." .. forms.gettext(saveLoadFile))
+			writeFile(playpool, "backup." .. playpool.generation .. "." .. forms.gettext(saveLoadFile))
 		end
 		
 		--Write out current run statistics

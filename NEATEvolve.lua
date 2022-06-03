@@ -768,7 +768,7 @@ function sameSpecies(genome1, genome2)
 	return dd + dw < DeltaThreshold
 end
 
-function rankGlobally()
+function rankGlobally(pool)
 	local global = {}
 	for s = 1,#pool.species do
 		local species = pool.species[s]
@@ -796,7 +796,7 @@ function calculateAverageFitness(species)
 	species.averageFitness = total / #species.genomes
 end
 
-function totalAverageFitness()
+function totalAverageFitness(pool)
 	local total = 0
 	for s = 1,#pool.species do
 		local species = pool.species[s]
@@ -806,7 +806,7 @@ function totalAverageFitness()
 	return total
 end
 
-function cullSpecies(cutToOne)
+function cullSpecies(pool,cutToOne)
 	for s = 1,#pool.species do
 		local species = pool.species[s]
 		
@@ -840,7 +840,7 @@ function breedChild(species)
 	return child
 end
 
-function removeStaleSpecies()
+function removeStaleSpecies(pool)
 	local survived = {}
 
 	for s = 1,#pool.species do
@@ -864,10 +864,10 @@ function removeStaleSpecies()
 	pool.species = survived
 end
 
-function removeWeakSpecies()
+function removeWeakSpecies(pool)
 	local survived = {}
 
-	local sum = totalAverageFitness()
+	local sum = totalAverageFitness(pool)
 	for s = 1,#pool.species do
 		local species = pool.species[s]
 		breed = math.floor(species.averageFitness / sum * Population)
@@ -897,28 +897,28 @@ function addToSpecies(pool, child)
 	end
 end
 
-function newPlayGeneration()
-	cullSpecies(false) -- Cull the bottom half of each species
-	rankGlobally()
-	removeStaleSpecies()
-	rankGlobally()
-	for s = 1,#playpool.species do
-		local species = playpool.species[s]
+function newGeneration(pool)
+	cullSpecies(pool,false) -- Cull the bottom half of each species
+	rankGlobally(pool)
+	removeStaleSpecies(pool)
+	rankGlobally(pool)
+	for s = 1,#pool.species do
+		local species = pool.species[s]
 		calculateAverageFitness(species)
 	end
-	removeWeakSpecies()
-	local sum = totalAverageFitness()
+	removeWeakSpecies(pool)
+	local sum = totalAverageFitness(pool)
 	local children = {}
-	for s = 1,#playpool.species do
-		local species = playpool.species[s]
+	for s = 1,#pool.species do
+		local species = pool.species[s]
 		breed = math.floor(species.averageFitness / sum * Population) - 1
 		for i=1,breed do
 			table.insert(children, breedChild(species))
 		end
 	end
-	cullSpecies(true) -- Cull all but the top member of each species
-	while #children + #playpool.species < Population do
-		local species = playpool.species[math.random(1, #pool.species)]
+	cullSpecies(pool, true) -- Cull all but the top member of each species
+	while #children + #pool.species < Population do
+		local species = pool.species[math.random(1, #pool.species)]
 		table.insert(children, breedChild(species))
 	end
 	for c=1,#children do
@@ -926,43 +926,9 @@ function newPlayGeneration()
 		addToSpecies(child)
 	end
 	
-	playpool.generation = playpool.generation + 1
+	pool.generation = pool.generation + 1
 	
-	writeFile("backup." .. playpool.generation .. "." .. forms.gettext(saveLoadFile))
-end
-
-function newPredGeneration()
-	cullSpecies(false) -- Cull the bottom half of each species
-	rankGlobally()
-	removeStaleSpecies()
-	rankGlobally()
-	for s = 1,#predpool.species do
-		local species = predpool.species[s]
-		calculateAverageFitness(species)
-	end
-	removeWeakSpecies()
-	local sum = totalAverageFitness()
-	local children = {}
-	for s = 1,#predpool.species do
-		local species = predpool.species[s]
-		breed = math.floor(species.averageFitness / sum * Population) - 1
-		for i=1,breed do
-			table.insert(children, breedChild(species))
-		end
-	end
-	cullSpecies(true) -- Cull all but the top member of each species
-	while #children + #predpool.species < Population do
-		local species = predpool.species[math.random(1, #predpool.species)]
-		table.insert(children, breedChild(species))
-	end
-	for c=1,#children do
-		local child = children[c]
-		addToSpecies(child)
-	end
-	
-	predpool.generation = predpool.generation + 1
-	
-	writeFile("backup." .. predpool.generation .. "." .. forms.gettext(saveLoadFile))
+	writeFile("backup." .. pool.generation .. "." .. forms.gettext(saveLoadFile))
 end
 	
 function initializePool()
@@ -1058,36 +1024,23 @@ if pool == nil then
 	initializePool()
 end
 
-
-function nextPlayGenome()
-	playpool.currentGenome = playpool.currentGenome + 1
-	if playpool.currentGenome > #playpool.species[playpool.currentSpecies].genomes then
-		playpool.currentGenome = 1
-		playpool.currentSpecies = playpool.currentSpecies+1
-		if playpool.currentSpecies > #playpool.species then
-			newGeneration()
-			playpool.currentSpecies = 1
+function nextGenome(pool)
+	pool.currentGenome = pool.currentGenome + 1
+	if pool.currentGenome > #pool.species[pool.currentSpecies].genomes then
+		pool.currentGenome = 1
+		pool.currentSpecies = pool.currentSpecies+1
+		if pool.currentSpecies > #pool.species then
+			newGeneration(pool)
+			pool.currentSpecies = 1
 		end
 	end
 end
 
-function nextPredGenome()
-	predpool.currentGenome = predpool.currentGenome + 1
-	if predpool.currentGenome > #predpool.species[predpool.currentSpecies].genomes then
-		predpool.currentGenome = 1
-		predpool.currentSpecies = predpool.currentSpecies+1
-		if predpool.currentSpecies > #predpool.species then
-			newGeneration()
-			predpool.currentSpecies = 1
-		end
-	end
-end
-
-function fitnessAlreadyMeasured()
-	local playspecies = playpool.species[playpool.currentSpecies]
-	local playgenome = playspecies.genomes[playpool.currentGenome]
+function fitnessAlreadyMeasured(pool)
+	local species = pool.species[pool.currentSpecies]
+	local genome = species.genomes[pool.currentGenome]
 	
-	return playgenome.fitness ~= 0
+	return genome.fitness ~= 0
 end
 
 function displayGenome(genome)
@@ -1418,10 +1371,14 @@ while true do
 		playpool.currentSpecies = 1
 		playpool.currentGenome = 1
 
-		--iterate over genomes until genome without fitness measurement
-		while fitnessAlreadyMeasured() do
-			nextGenome()
+		--iterate over play and pred genomes until genome without fitness measurement
+		while fitnessAlreadyMeasured(playpool) do
+			nextGenome(playpool)
 		end
+		while fitnessAlreadyMeasured(predpool) do
+			nextGenome(predpool)
+		end
+
 		initializeRun()
 	end
 

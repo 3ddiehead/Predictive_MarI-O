@@ -1012,11 +1012,11 @@ function evaluateCurrent()
 
 	predgenome.fiteration = predgenome.fiteration + 1
 
-	local unfitness = predgenome.fitness
+	local unfitness = 0
 	for n=1,Inputs+Outputs do
 		unfitness = unfitness + math.abs(prediction[n] - predgenome.network.neurons[n].value)
 	end
-	predgenome.fitness = 2*(Inputs+Outputs) - unfitness/predgenome.fiteration
+	predgenome.fitness = Inputs+Outputs - (predgenome.fitness*(predgenome.fiteration-1)+unfitness)/predgenome.fiteration
 
 	prediction = evaluatePredictiveNetwork(predgenome.network, playgenome.network)
 

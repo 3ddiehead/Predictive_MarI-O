@@ -196,7 +196,7 @@ function sigmoid(x)
 	return 2/(1+math.exp(-4.9*x))-1
 end
 
-function newInnovation()
+function newInnovation(pool)
 	pool.innovation = pool.innovation + 1
 	return pool.innovation
 end
@@ -260,12 +260,12 @@ function copyGenome(genome)
 	return genome2
 end
 
-function basicGenome()
+function basicGenome(pool)
 	local genome = newGenome()
 	local innovation = 1
 
 	genome.maxneuron = Inputs
-	mutate(genome)
+	mutate(pool, genome)
 	
 	return genome
 end
@@ -365,10 +365,10 @@ function generatePredictiveNetwork(genome)
 	--Input and output prediction neurons begin after memory neurons, placement depends on the size of the MemorySize variable
 	--Potential addition is a PredSize variable, for predicting furthur in advance.
 	for i=1,Inputs do
-		network.neurons[(MemorySize+1)*Inputs+(MemorySize+1)*Outputs+i] = newNeuron()
+		network.neurons[MaxNodes+i] = newNeuron()
 	end
 	for o=1,Outputs do
-		network.neurons[(MemorySize+2)*Inputs+(MemorySize+1)*Outputs+i] = newNeuron()
+		network.neurons[MaxNodes+Inputs+i] = newNeuron()
 	end
 
 	table.sort(genome.genes, function (a,b)
@@ -468,7 +468,7 @@ function evaluatePredictiveNetwork(network, playnetwork)
 	
 	prediction = {}
 	for n=1,Inputs+Outputs do
-		prediction[n] = network.neurons[(MemorySize+1)*(Inputs+Outputs)+n].value
+		prediction[n] = network.neurons[MaxNodes+n].value
 	end
 
 	return prediction
@@ -579,7 +579,7 @@ function point(genome)
 	end
 end
 
-function linkMutate(genome, forceBias)
+function linkMutate(pool, genome, forceBias)
 	local neuron1 = randomNeuron(genome.genes, false)
 	local neuron2 = randomNeuron(genome.genes, true)
 	 
@@ -605,13 +605,13 @@ function linkMutate(genome, forceBias)
 	if containsLink(genome.genes, newLink) then
 		return
 	end
-	newLink.innovation = newInnovation()
+	newLink.innovation = newInnovation(pool)
 	newLink.weight = math.random()*4-2
 	
 	table.insert(genome.genes, newLink)
 end
 
-function nodeMutate(genome)
+function nodeMutate(pool, genome)
 	if #genome.genes == 0 then
 		return
 	end
@@ -627,13 +627,13 @@ function nodeMutate(genome)
 	local gene1 = copyGene(gene)
 	gene1.out = genome.maxneuron
 	gene1.weight = 1.0
-	gene1.innovation = newInnovation()
+	gene1.innovation = newInnovation(pool)
 	gene1.enabled = true
 	table.insert(genome.genes, gene1)
 	
 	local gene2 = copyGene(gene)
 	gene2.into = genome.maxneuron
-	gene2.innovation = newInnovation()
+	gene2.innovation = newInnovation(pool)
 	gene2.enabled = true
 	table.insert(genome.genes, gene2)
 end
@@ -654,7 +654,7 @@ function enableDisableMutate(genome, enable)
 	gene.enabled = not gene.enabled
 end
 
-function mutate(genome)
+function mutate(pool, genome)
 	for mutation,rate in pairs(genome.mutationRates) do
 		if math.random(1,2) == 1 then
 			genome.mutationRates[mutation] = 0.95*rate
@@ -670,7 +670,7 @@ function mutate(genome)
 	local p = genome.mutationRates["link"]
 	while p > 0 do
 		if math.random() < p then
-			linkMutate(genome, false)
+			linkMutate(pool, genome, false)
 		end
 		p = p - 1
 	end
@@ -678,7 +678,7 @@ function mutate(genome)
 	p = genome.mutationRates["bias"]
 	while p > 0 do
 		if math.random() < p then
-			linkMutate(genome, true)
+			linkMutate(pool, genome, true)
 		end
 		p = p - 1
 	end
@@ -686,7 +686,7 @@ function mutate(genome)
 	p = genome.mutationRates["node"]
 	while p > 0 do
 		if math.random() < p then
-			nodeMutate(genome)
+			nodeMutate(pool, genome)
 		end
 		p = p - 1
 	end
@@ -824,7 +824,7 @@ function cullSpecies(pool,cutToOne)
 	end
 end
 
-function breedChild(species)
+function breedChild(pool, species)
 	local child = {}
 	if math.random() < CrossoverChance then
 		g1 = species.genomes[math.random(1, #species.genomes)]
@@ -835,7 +835,7 @@ function breedChild(species)
 		child = copyGenome(g)
 	end
 	
-	mutate(child)
+	mutate(pool, child)
 	
 	return child
 end
@@ -913,13 +913,13 @@ function newGeneration(pool)
 		local species = pool.species[s]
 		breed = math.floor(species.averageFitness / sum * Population) - 1
 		for i=1,breed do
-			table.insert(children, breedChild(species))
+			table.insert(children, breedChild(pool, species))
 		end
 	end
 	cullSpecies(pool, true) -- Cull all but the top member of each species
 	while #children + #pool.species < Population do
 		local species = pool.species[math.random(1, #pool.species)]
-		table.insert(children, breedChild(species))
+		table.insert(children, breedChild(pool, species))
 	end
 	for c=1,#children do
 		local child = children[c]
@@ -937,9 +937,10 @@ function initializePool()
 	predpool = newPool()
 
 	for i=1,Population do
-		basic = basicGenome()
-		addToSpecies(playpool, basic)
-		addToSpecies(predpool, basic)
+		playbasic = basicGenome(playpool)
+		predbasic = basicGenome(predpool)
+		addToSpecies(playpool, playbasic)
+		addToSpecies(predpool, predbasic)
 	end
 
 	initializeRun()
@@ -976,6 +977,7 @@ function initializeRun()
 		return {}
 	end
 
+	--Initialize all memory frames to starting frame position
 	for m=1,MemorySize+1 do
 		for i=1,Inputs do
 			predgenome.network.neurons[(m-1)*Inputs+(m-1)*Outputs+i].value = inputs[i]
@@ -1020,7 +1022,7 @@ function evaluateCurrent()
 
 end
 
-if pool == nil then
+if playpool == nil or predpool == nil then
 	initializePool()
 end
 

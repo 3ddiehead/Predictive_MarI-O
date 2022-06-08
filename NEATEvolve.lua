@@ -1211,7 +1211,7 @@ end
 function savePool()
 	local filename = forms.gettext(saveLoadFile)
 	local pool = playpool
-	if forms.ischecked(redPred) then
+	if forms.ischecked(refPred) then
 		pool = predpool
 	end
 	writeFile(pool, filename)
@@ -1263,15 +1263,14 @@ function loadFile(filename)
 			nextGenome(predpool)
 		end
 		initializeRun()
-		playpool.currentFrame = playpool.currentFrame + 1
     else
     	playpool = pool
     	while fitnessAlreadyMeasured(playpool) do
 			nextGenome(playpool)
 		end
 		initializeRun()
-		playpool.currentFrame = playpool.currentFrame + 1
     end
+    playpool.currentFrame = playpool.currentFrame + 1
 end
  
 function loadPool()
@@ -1316,7 +1315,7 @@ showMutationRates = forms.checkbox(form, "Show M-Rates", 5, 52)
 restartButton = forms.button(form, "Restart", initializePool, 5, 77)
 saveButton = forms.button(form, "Save", savePool, 5, 102)
 loadButton = forms.button(form, "Load", loadPool, 80, 102)
-refPred = forms.checkbox(form, "Use Predictor Pool", 5, 52)
+refPred = forms.checkbox(form, "Use MarI/O-P", 5, 52)
 saveLoadFile = forms.textbox(form, Filename .. ".pool", 170, 25, nil, 5, 148)
 saveLoadLabel = forms.label(form, "Save/Load:", 5, 129)
 playTopButton = forms.button(form, "Play Top", playTop, 5, 170)

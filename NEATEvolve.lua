@@ -1208,14 +1208,18 @@ function writeFile(pool, filename)
         file:close()
 end
 
-function savePool(pool)
+function savePool()
 	local filename = forms.gettext(saveLoadFile)
+	local pool = playpool
+	if forms.ischecked(redPred) then
+		pool = predpool
+	end
 	writeFile(pool, filename)
 end
 
-function loadFile(pool, filename)
-        local file = io.open(filename, "r")
-	pool = newPool()
+function loadFile(filename)
+    local file = io.open(filename, "r")
+	local pool = newPool()
 	pool.generation = file:read("*number")
 	pool.maxFitness = file:read("*number")
 	forms.settext(maxFitnessLabel, "Max Fitness: " .. math.floor(pool.maxFitness))
@@ -1253,19 +1257,29 @@ function loadFile(pool, filename)
 	end
         file:close()
 	
-	while fitnessAlreadyMeasured(pool) do
-		nextGenome(pool)
-	end
-	initializeRun()
-	pool.currentFrame = pool.currentFrame + 1
+    if forms.ischecked(refPred) then
+    	predpool = pool
+    	while fitnessAlreadyMeasured(predpool) do
+			nextGenome(predpool)
+		end
+		initializeRun()
+		playpool.currentFrame = playpool.currentFrame + 1
+    else
+    	playpool = pool
+    	while fitnessAlreadyMeasured(playpool) do
+			nextGenome(playpool)
+		end
+		initializeRun()
+		playpool.currentFrame = playpool.currentFrame + 1
+    end
 end
  
-function loadPool(pool)
+function loadPool()
 	local filename = forms.gettext(saveLoadFile)
-	loadFile(pool, filename)
+	loadFile(filename)
 end
 
-function playTop(pool)
+function playTop()
 	local maxfitness = 0
 	local maxs, maxg
 	for s,species in pairs(pool.species) do
@@ -1302,6 +1316,7 @@ showMutationRates = forms.checkbox(form, "Show M-Rates", 5, 52)
 restartButton = forms.button(form, "Restart", initializePool, 5, 77)
 saveButton = forms.button(form, "Save", savePool, 5, 102)
 loadButton = forms.button(form, "Load", loadPool, 80, 102)
+refPred = forms.checkbox(form, "Use Predictor Pool", 5, 52)
 saveLoadFile = forms.textbox(form, Filename .. ".pool", 170, 25, nil, 5, 148)
 saveLoadLabel = forms.label(form, "Save/Load:", 5, 129)
 playTopButton = forms.button(form, "Play Top", playTop, 5, 170)

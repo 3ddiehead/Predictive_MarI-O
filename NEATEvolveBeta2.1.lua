@@ -509,21 +509,62 @@ function crossover(g1, g2)
 	return child
 end
 
-function randomNeuron(genes, nonInput)
+function randomPlayNeuron(pool, genes, nonInput)
 	local neurons = {}
+
 	if not nonInput then
-		for i=1,Inputs+MemorySize*Outputs do
+		for i=1,Inputs do
 			neurons[i] = true
 		end
 	end
+
 	for o=1,Outputs do
 		neurons[MaxNodes+o] = true
 	end
+
+
 	for i=1,#genes do
-		if (not nonInput) or genes[i].into > Inputs+MemorySize*Outputs then
+		if (not nonInput) or genes[i].into > Inputs then
 			neurons[genes[i].into] = true
 		end
-		if (not nonInput) or genes[i].out > Inputs+MemorySize*Outputs then
+		if (not nonInput) or genes[i].out > Inputs then
+			neurons[genes[i].out] = true
+		end
+	end
+
+	local count = 0
+	for _,_ in pairs(neurons) do
+		count = count + 1
+	end
+	local n = math.random(1, count)
+	
+	for k,v in pairs(neurons) do
+		n = n-1
+		if n == 0 then
+			return k
+		end
+	end
+	
+	return 0
+end
+
+function randomPredNeuron(pool, genes, nonInput)
+	local neurons = {}
+
+	if not nonInput then
+		for i=1,(pool.memorySize+1)*(Inputs+Outputs) do
+			neurons[i] = true
+		end
+
+	for p=1,Inputs do
+		neurons[MaxNodes+p] = true
+	end
+
+	for i=1,#genes do
+		if (not nonInput) or genes[i].into > (pool.memorySize+1)*(Inputs+Outputs) then
+			neurons[genes[i].into] = true
+		end
+		if (not nonInput) or genes[i].out > (pool.memorySize+1)*(Inputs+Outputs) then
 			neurons[genes[i].out] = true
 		end
 	end
@@ -580,15 +621,22 @@ function point(genome)
 end
 
 function linkMutate(pool, genome, forceBias)
-	local neuron1 = randomNeuron(genome.genes, false)
-	local neuron2 = randomNeuron(genome.genes, true)
+	if pool.memorySize ~= 0 then
+		local neuron1 = randomPredNeuron(pool, genome.genes, false)
+		local neuron2 = randomPredNeuron(pool, genome.genes, true)
+	else
+		local neuron1 = randomPlayNeuron(pool, genome.genes, false)
+		local neuron2 = randomPlayNeuron(pool, genome.genes, true)
+	end
 	 
 	local newLink = newGene()
-	if neuron1 <= Inputs+MemorySize*Outputs and neuron2 <= Inputs+MemorySize*Outputs then
+	if (neuron1 <= Inputs and neuron2 <= Inputs and pool.memorySize == 0)
+		or
+		(neuron1 <= (pool.memorySize+1)*(Inputs+Outputs) and neuron2 <= (pool.memorySize+1)*(Inputs+Outputs) and pool.memorySize ~= 0) then
 		--Both input nodes
 		return
-	end
-	if neuron2 <= Inputs+MemorySize*Outputs then
+	
+	if neuron2 <= Inputs or (neuron2 <= (pool.memorySize+1)*(Inputs+Outputs) and pool.memorySize ~= 0) then
 		-- Swap output and input
 		local temp = neuron1
 		neuron1 = neuron2
@@ -934,7 +982,9 @@ end
 function initializePool()
 	--Split pool into two organisms, the player pool and the predictor pool.  This will make fitness checking easier and gene creation independent for the two.
 	playpool = newPool()
+	playpool.memorySize = 0
 	predpool = newPool()
+	predpool.memorySize = MemorySize
 
 	for i=1,Population do
 		playbasic = basicGenome(playpool)
@@ -1176,7 +1226,6 @@ end
 function displayPredGenome(genome)
 	local network = genome.network
 	local cells = {}
-	local memcells = {}
 	local i = 1
 	local cell = {}
 
@@ -1185,7 +1234,7 @@ function displayPredGenome(genome)
 			cell = {}
 			cell.x = 40+5*dx
 			cell.y = 70+5*dy
-			cell.value = network.neurons[Inputs+Output+i].value
+			cell.value = network.neurons[Inputs+Outputs+i].value
 			cells[i] = cell
 			i = i + 1
 		end
@@ -1198,7 +1247,7 @@ function displayPredGenome(genome)
 				cell = {}
 				cell.x = 40+5*dx
 				cell.y = 70+5*dy
-				cell.value = network.neurons[(m+1)*(Inputs+Output)+i].value
+				cell.value = network.neurons[(m+1)*(Inputs+Outputs)+i].value
 				cell.age = m
 				cells[m*(Inputs+Outputs)+i] = cell
 				i = i + 1
@@ -1210,9 +1259,8 @@ function displayPredGenome(genome)
 	biasCell.x = 70
 	biasCell.y = 110
 	biasCell.value = network.neurons[2*Inputs+Outputs].value
-	cells[1][Inputs] = biasCell
+	cells[Inputs] = biasCell
 
-	local pcells = {}
 	i = 1
 	for dy=-BoxRadius,BoxRadius do
 		for dx=-BoxRadius,BoxRadius do
@@ -1220,7 +1268,7 @@ function displayPredGenome(genome)
 			cell.x = 210+5*dx
 			cell.y = 70+5*dy
 			cell.value = network.neurons[MaxNodes+i].value
-			pcells[i] = cell
+			cells[MaxNodes+i] = cell
 			i = i + 1
 		end
 	end
@@ -1228,7 +1276,7 @@ function displayPredGenome(genome)
 	biasPCell.x = 240
 	biasPCell.y = 110
 	biasPCell.value = network.neurons[MaxNodes+Inputs].value
-	pcells[Inputs] = biasPCell
+	cells[MaxNodes+Inputs] = biasPCell
 	
 	for n,neuron in pairs(network.neurons) do
 		cell = {}
@@ -1291,7 +1339,7 @@ function displayPredGenome(genome)
 			end
 			--draw ghost cells for previous frames in memory
 			if cell.age then
-				opacity = 0x5000000//(2^cell.age)
+				opacity = 0x5000000/(2^cell.age)
 			end
 
 			color = opacity + color*0x10000 + color*0x100 + color
@@ -1301,8 +1349,8 @@ function displayPredGenome(genome)
 
 	--draw prediction frame cells
 	gui.drawBox(210-BoxRadius*5-3,70-BoxRadius*5-3,210+BoxRadius*5+2,70+BoxRadius*5+2,0xFF000000, 0x80808080)
-	for n,cell in pairs(pcells) do
-		if n > Inputs or cell.value ~= 0 then
+	for n,cell in pairs(cells) do
+		if n > MaxNodes then
 			local color = math.floor((cell.value+1)/2*256)
 			if color > 255 then color = 255 end
 			if color < 0 then color = 0 end
@@ -1480,18 +1528,18 @@ writeFile(playpool,"temp.pool")
 
 event.onexit(onExit)
 
-form = forms.newform(200, 260, "Fitness")
+form = forms.newform(200, 290, "Fitness")
 maxFitnessLabel = forms.label(form, "Max Fitness: " .. math.floor(playpool.maxFitness), 5, 8)
-showNetwork = forms.checkbox(form, "Show Map", 5, 30)
-showMutationRates = forms.checkbox(form, "Show M-Rates", 5, 52)
-restartButton = forms.button(form, "Restart", initializePool, 5, 77)
-saveButton = forms.button(form, "Save", savePool, 5, 102)
-loadButton = forms.button(form, "Load", loadPool, 80, 102)
-refPred = forms.checkbox(form, "Use MarI/O-P", 5, 52)
-saveLoadFile = forms.textbox(form, Filename .. ".pool", 170, 25, nil, 5, 148)
-saveLoadLabel = forms.label(form, "Save/Load:", 5, 129)
-playTopButton = forms.button(form, "Play Top", playTop, 5, 170)
-hideBanner = forms.checkbox(form, "Hide Banner", 5, 190)
+refPred = forms.checkbox(form, "Show Pred", 5, 38)
+showNetwork = forms.checkbox(form, "Show Map", 5, 60)
+showMutationRates = forms.checkbox(form, "Show M-Rates", 5, 82)
+restartButton = forms.button(form, "Restart", initializePool, 5, 107)
+saveButton = forms.button(form, "Save", savePool, 5, 132)
+loadButton = forms.button(form, "Load", loadPool, 80, 132)
+saveLoadFile = forms.textbox(form, Filename .. ".pool", 170, 25, nil, 5, 178)
+saveLoadLabel = forms.label(form, "Save/Load:", 5, 159)
+playTopButton = forms.button(form, "Play Top", playTop, 5, 205)
+hideBanner = forms.checkbox(form, "Hide Banner", 5, 230)
 
 
 while true do
@@ -1507,7 +1555,7 @@ while true do
 	predgenome = predspecies.genomes[predpool.currentGenome]
 	
 	if forms.ischecked(showNetwork) then
-		if forms.ischecked(refPred) then
+		if forms.ischecked(refPred) and playpool.currentFrame > 0 then
 			displayPredGenome(predgenome)
 		else
 			displayPlayGenome(playgenome)

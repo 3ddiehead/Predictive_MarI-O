@@ -1067,6 +1067,8 @@ function evaluateCurrent()
 		if predgenome.network.neurons[n].value ~= 0 then
 			fitbits = fitbits + 1
 			unfitness = unfitness + math.abs(predgenome.network.neurons[n].value - prediction[n])
+		elseif prediction[n] ~= 0 then
+			unfitness = unfitness + math.abs(prediction[n])
 		end
 	end
 	predgenome.fitness = predgenome.fitness + fitbits - unfitness

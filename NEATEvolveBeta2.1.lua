@@ -555,6 +555,7 @@ function randomPredNeuron(pool, genes, nonInput)
 		for i=1,(pool.memorySize+1)*(Inputs+Outputs) do
 			neurons[i] = true
 		end
+	end
 
 	for p=1,Inputs do
 		neurons[MaxNodes+p] = true
@@ -621,21 +622,22 @@ function point(genome)
 end
 
 function linkMutate(pool, genome, forceBias)
+	local neuron1
+	local neuron2
 	if pool.memorySize ~= 0 then
-		local neuron1 = randomPredNeuron(pool, genome.genes, false)
-		local neuron2 = randomPredNeuron(pool, genome.genes, true)
+		neuron1 = randomPredNeuron(pool, genome.genes, false)
+		neuron2 = randomPredNeuron(pool, genome.genes, true)
 	else
-		local neuron1 = randomPlayNeuron(pool, genome.genes, false)
-		local neuron2 = randomPlayNeuron(pool, genome.genes, true)
+		neuron1 = randomPlayNeuron(pool, genome.genes, false)
+		neuron2 = randomPlayNeuron(pool, genome.genes, true)
 	end
-	 
+
 	local newLink = newGene()
-	if (neuron1 <= Inputs and neuron2 <= Inputs and pool.memorySize == 0)
-		or
-		(neuron1 <= (pool.memorySize+1)*(Inputs+Outputs) and neuron2 <= (pool.memorySize+1)*(Inputs+Outputs) and pool.memorySize ~= 0) then
+	if (neuron1 <= Inputs and neuron2 <= Inputs) or (neuron1 <= (pool.memorySize+1)*(Inputs+Outputs) and neuron2 <= (pool.memorySize+1)*(Inputs+Outputs) and pool.memorySize ~= 0) then
 		--Both input nodes
 		return
-	
+	end
+
 	if neuron2 <= Inputs or (neuron2 <= (pool.memorySize+1)*(Inputs+Outputs) and pool.memorySize ~= 0) then
 		-- Swap output and input
 		local temp = neuron1
@@ -1074,7 +1076,6 @@ end
 
 if playpool == nil or predpool == nil then
 	initializePool()
-	console.writeline(#playpool,"\n",#predpool)
 end
 
 function nextGenome(pool)
@@ -1397,6 +1398,7 @@ function writeFile(pool, filename)
         local file = io.open(filename, "w")
 	file:write(pool.generation .. "\n")
 	file:write(pool.maxFitness .. "\n")
+	file:write(pool.memorySize .. "\n")
 	file:write(#pool.species .. "\n")
         for n,species in pairs(pool.species) do
 		file:write(species.topFitness .. "\n")
@@ -1442,6 +1444,7 @@ function loadFile(filename)
 	local pool = newPool()
 	pool.generation = file:read("*number")
 	pool.maxFitness = file:read("*number")
+	pool.memorySize = file:read("*number")
 	forms.settext(maxFitnessLabel, "Max Fitness: " .. math.floor(pool.maxFitness))
         local numSpecies = file:read("*number")
         for s=1,numSpecies do

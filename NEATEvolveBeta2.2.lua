@@ -1037,7 +1037,6 @@ function initializeRun()
 	end
 
 	predgenome.fitness = 1
-	predgenome.fitbits = 0
 	prediction = evaluatePredictiveNetwork(predgenome.network, playgenome.network)
 
 	evaluateCurrent()
@@ -1062,15 +1061,15 @@ function evaluateCurrent()
 
 	joypad.set(controller)
 
-	local tempfitbits = predgenome.fitbits
+	local fitbits = 0
 	local unfitness = 0
 	for n=1,Inputs+Outputs do
 		if predgenome.network.neurons[n].value ~= 0 then
-			predgenome.fitbits = predgenome.fitbits + 1
+			fitbits = fitbits + 1
 			unfitness = unfitness + math.abs(predgenome.network.neurons[n].value - prediction[n])
 		end
 	end
-	predgenome.fitness = predgenome.fitness + (predgenome.fitbits - tempfitbits - unfitness)
+	predgenome.fitness = predgenome.fitness + fitbits - unfitness
 
 	prediction = evaluatePredictiveNetwork(predgenome.network, playgenome.network)
 

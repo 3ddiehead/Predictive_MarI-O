@@ -33,6 +33,10 @@ InputSize = (BoxRadius*2+1)*(BoxRadius*2+1)
 
 Inputs = InputSize+1
 Outputs = #ButtonNames
+--MemorySize determines the number of frames that will be stored in MarI/O's working memory
+MemorySize = 5
+--MemoryInterval determines the number of frames between each stored frame in MarI/O's working memory (time resolution)
+MemoryInterval = 5
 
 Population = 300
 DeltaDisjoint = 2.0
@@ -192,7 +196,7 @@ function sigmoid(x)
 	return 2/(1+math.exp(-4.9*x))-1
 end
 
-function newInnovation()
+function newInnovation(pool)
 	pool.innovation = pool.innovation + 1
 	return pool.innovation
 end
@@ -256,12 +260,12 @@ function copyGenome(genome)
 	return genome2
 end
 
-function basicGenome()
+function basicGenome(pool)
 	local genome = newGenome()
 	local innovation = 1
 
 	genome.maxneuron = Inputs
-	mutate(genome)
+	mutate(pool, genome)
 	
 	return genome
 end
@@ -296,7 +300,7 @@ function newNeuron()
 	return neuron
 end
 
-function generateNetwork(genome)
+function generatePerceptualNetwork(genome)
 	local network = {}
 	network.neurons = {}
 	
@@ -307,7 +311,12 @@ function generateNetwork(genome)
 	for o=1,Outputs do
 		network.neurons[MaxNodes+o] = newNeuron()
 	end
-	
+
+	--[[Initializing prediction differential neurons
+	for d=1,Inputs do
+		network.neurons[Inputs+d] = newNeuron()
+	end]]
+
 	table.sort(genome.genes, function (a,b)
 		return (a.out < b.out)
 	end)
@@ -328,7 +337,61 @@ function generateNetwork(genome)
 	genome.network = network
 end
 
-function evaluateNetwork(network, inputs)
+function generatePredictiveNetwork(genome)
+	local network = {}
+	network.neurons = {}
+	
+	for i=1,Inputs do
+		network.neurons[i] = newNeuron()
+	end
+	
+	for o=1,Outputs do
+		network.neurons[Inputs+o] = newNeuron()
+	end
+
+	--Initializing memory neurons
+	--input memory begins after current input and current output (176 for SMB, 178 for SMW)
+	--output memory begins after input memory
+	for m=1,MemorySize do
+		for i=1,Inputs do
+			network.neurons[m*Inputs+m*Outputs+i] = newNeuron()
+		end
+		for o=1,Outputs do
+			network.neurons[(m+1)*Inputs+m*Outputs+o] = newNeuron()
+		end
+	end
+
+	--Initializing predictive output neurons
+	--Input and output prediction neurons begin after memory neurons, placement depends on the size of the MemorySize variable
+	--Potential addition is a PredSize variable, for predicting furthur in advance.
+	for i=1,Inputs do
+		network.neurons[MaxNodes+i] = newNeuron()
+	end
+	for o=1,Outputs do
+		network.neurons[MaxNodes+Inputs+o] = newNeuron()
+	end
+
+	table.sort(genome.genes, function (a,b)
+		return (a.out < b.out)
+	end)
+	for i=1,#genome.genes do
+		local gene = genome.genes[i]
+		if gene.enabled then
+			if network.neurons[gene.out] == nil then
+				network.neurons[gene.out] = newNeuron()
+			end
+			local neuron = network.neurons[gene.out]
+			table.insert(neuron.incoming, gene)
+			if network.neurons[gene.into] == nil then
+				network.neurons[gene.into] = newNeuron()
+			end
+		end
+	end
+	
+	genome.network = network
+end
+
+function evaluatePerceptualNetwork(network, inputs)
 	table.insert(inputs, 1)
 	if #inputs ~= Inputs then
 		console.writeline("Incorrect number of neural network inputs.")
@@ -338,7 +401,7 @@ function evaluateNetwork(network, inputs)
 	for i=1,Inputs do
 		network.neurons[i].value = inputs[i]
 	end
-	
+
 	for _,neuron in pairs(network.neurons) do
 		local sum = 0
 		for j = 1,#neuron.incoming do
@@ -363,6 +426,52 @@ function evaluateNetwork(network, inputs)
 	end
 	
 	return outputs
+end
+
+function evaluatePredictiveNetwork(network, playnetwork)
+
+	--Replace older memory with newer memory for input and output
+	for m=MemorySize,1,-1 do
+		for i=1,Inputs do
+			network.neurons[m*Inputs+m*Outputs+i] = network.neurons[(m-1)*Inputs+(m-1)*Outputs+i]
+		end
+		for o=1,Outputs do
+			network.neurons[(m+1)*Inputs+m*Outputs+o] =  network.neurons[m*Inputs+(m-1)*Outputs+o]
+		end
+	end
+
+	--Refresh current states of input and output
+	for i=1,Inputs do
+		network.neurons[i] = playnetwork.neurons[i]
+	end
+
+	for o=1,Outputs do
+		if playnetwork.neurons[MaxNodes+o].value > 0 then
+			network.neurons[Inputs+o].value = 1
+		else
+			network.neurons[Inputs+o].value = 0
+		end
+	end
+
+	for _,neuron in pairs(network.neurons) do
+		local sum = 0
+		for j = 1,#neuron.incoming do
+			local incoming = neuron.incoming[j]
+			local other = network.neurons[incoming.into]
+			sum = sum + incoming.weight * other.value
+		end
+		
+		if #neuron.incoming > 0 then
+			neuron.value = sigmoid(sum)
+		end
+	end
+	
+	prediction = {}
+	for n=1,Inputs+Outputs do
+		prediction[n] = network.neurons[MaxNodes+n].value
+	end
+
+	return prediction
 end
 
 function crossover(g1, g2)
@@ -400,21 +509,63 @@ function crossover(g1, g2)
 	return child
 end
 
-function randomNeuron(genes, nonInput)
+function randomPlayNeuron(pool, genes, nonInput)
 	local neurons = {}
+
 	if not nonInput then
 		for i=1,Inputs do
 			neurons[i] = true
 		end
 	end
+
 	for o=1,Outputs do
 		neurons[MaxNodes+o] = true
 	end
+
+
 	for i=1,#genes do
 		if (not nonInput) or genes[i].into > Inputs then
 			neurons[genes[i].into] = true
 		end
 		if (not nonInput) or genes[i].out > Inputs then
+			neurons[genes[i].out] = true
+		end
+	end
+
+	local count = 0
+	for _,_ in pairs(neurons) do
+		count = count + 1
+	end
+	local n = math.random(1, count)
+	
+	for k,v in pairs(neurons) do
+		n = n-1
+		if n == 0 then
+			return k
+		end
+	end
+	
+	return 0
+end
+
+function randomPredNeuron(pool, genes, nonInput)
+	local neurons = {}
+
+	if not nonInput then
+		for i=1,(pool.memorySize+1)*(Inputs+Outputs) do
+			neurons[i] = true
+		end
+	end
+
+	for p=1,Inputs do
+		neurons[MaxNodes+p] = true
+	end
+
+	for i=1,#genes do
+		if (not nonInput) or genes[i].into > (pool.memorySize+1)*(Inputs+Outputs) then
+			neurons[genes[i].into] = true
+		end
+		if (not nonInput) or genes[i].out > (pool.memorySize+1)*(Inputs+Outputs) then
 			neurons[genes[i].out] = true
 		end
 	end
@@ -457,16 +608,37 @@ function pointMutate(genome)
 	end
 end
 
-function linkMutate(genome, forceBias)
-	local neuron1 = randomNeuron(genome.genes, false)
-	local neuron2 = randomNeuron(genome.genes, true)
-	 
+function point(genome)
+	local step = genome.mutationRates["step"]
+	
+	for i=1,#genome.genes do
+		local gene = genome.genes[i]
+		if math.random() < PerturbChance then
+			gene.weight = gene.weight + math.random() * step*2 - step
+		else
+			gene.weight = math.random()*4-2
+		end
+	end
+end
+
+function linkMutate(pool, genome, forceBias)
+	local neuron1
+	local neuron2
+	if pool.memorySize ~= 0 then
+		neuron1 = randomPredNeuron(pool, genome.genes, false)
+		neuron2 = randomPredNeuron(pool, genome.genes, true)
+	else
+		neuron1 = randomPlayNeuron(pool, genome.genes, false)
+		neuron2 = randomPlayNeuron(pool, genome.genes, true)
+	end
+
 	local newLink = newGene()
-	if neuron1 <= Inputs and neuron2 <= Inputs then
+	if (neuron1 <= Inputs and neuron2 <= Inputs) or (neuron1 <= (pool.memorySize+1)*(Inputs+Outputs) and neuron2 <= (pool.memorySize+1)*(Inputs+Outputs) and pool.memorySize ~= 0) then
 		--Both input nodes
 		return
 	end
-	if neuron2 <= Inputs then
+
+	if neuron2 <= Inputs or (neuron2 <= (pool.memorySize+1)*(Inputs+Outputs) and pool.memorySize ~= 0) then
 		-- Swap output and input
 		local temp = neuron1
 		neuron1 = neuron2
@@ -475,20 +647,21 @@ function linkMutate(genome, forceBias)
 
 	newLink.into = neuron1
 	newLink.out = neuron2
+	
 	if forceBias then
 		newLink.into = Inputs
 	end
-	
+
 	if containsLink(genome.genes, newLink) then
 		return
 	end
-	newLink.innovation = newInnovation()
+	newLink.innovation = newInnovation(pool)
 	newLink.weight = math.random()*4-2
 	
 	table.insert(genome.genes, newLink)
 end
 
-function nodeMutate(genome)
+function nodeMutate(pool, genome)
 	if #genome.genes == 0 then
 		return
 	end
@@ -504,13 +677,13 @@ function nodeMutate(genome)
 	local gene1 = copyGene(gene)
 	gene1.out = genome.maxneuron
 	gene1.weight = 1.0
-	gene1.innovation = newInnovation()
+	gene1.innovation = newInnovation(pool)
 	gene1.enabled = true
 	table.insert(genome.genes, gene1)
 	
 	local gene2 = copyGene(gene)
 	gene2.into = genome.maxneuron
-	gene2.innovation = newInnovation()
+	gene2.innovation = newInnovation(pool)
 	gene2.enabled = true
 	table.insert(genome.genes, gene2)
 end
@@ -531,7 +704,7 @@ function enableDisableMutate(genome, enable)
 	gene.enabled = not gene.enabled
 end
 
-function mutate(genome)
+function mutate(pool, genome)
 	for mutation,rate in pairs(genome.mutationRates) do
 		if math.random(1,2) == 1 then
 			genome.mutationRates[mutation] = 0.95*rate
@@ -547,7 +720,7 @@ function mutate(genome)
 	local p = genome.mutationRates["link"]
 	while p > 0 do
 		if math.random() < p then
-			linkMutate(genome, false)
+			linkMutate(pool, genome, false)
 		end
 		p = p - 1
 	end
@@ -555,7 +728,7 @@ function mutate(genome)
 	p = genome.mutationRates["bias"]
 	while p > 0 do
 		if math.random() < p then
-			linkMutate(genome, true)
+			linkMutate(pool, genome, true)
 		end
 		p = p - 1
 	end
@@ -563,7 +736,7 @@ function mutate(genome)
 	p = genome.mutationRates["node"]
 	while p > 0 do
 		if math.random() < p then
-			nodeMutate(genome)
+			nodeMutate(pool, genome)
 		end
 		p = p - 1
 	end
@@ -645,7 +818,7 @@ function sameSpecies(genome1, genome2)
 	return dd + dw < DeltaThreshold
 end
 
-function rankGlobally()
+function rankGlobally(pool)
 	local global = {}
 	for s = 1,#pool.species do
 		local species = pool.species[s]
@@ -673,7 +846,7 @@ function calculateAverageFitness(species)
 	species.averageFitness = total / #species.genomes
 end
 
-function totalAverageFitness()
+function totalAverageFitness(pool)
 	local total = 0
 	for s = 1,#pool.species do
 		local species = pool.species[s]
@@ -683,7 +856,7 @@ function totalAverageFitness()
 	return total
 end
 
-function cullSpecies(cutToOne)
+function cullSpecies(pool,cutToOne)
 	for s = 1,#pool.species do
 		local species = pool.species[s]
 		
@@ -701,7 +874,7 @@ function cullSpecies(cutToOne)
 	end
 end
 
-function breedChild(species)
+function breedChild(pool, species)
 	local child = {}
 	if math.random() < CrossoverChance then
 		g1 = species.genomes[math.random(1, #species.genomes)]
@@ -712,12 +885,12 @@ function breedChild(species)
 		child = copyGenome(g)
 	end
 	
-	mutate(child)
+	mutate(pool, child)
 	
 	return child
 end
 
-function removeStaleSpecies()
+function removeStaleSpecies(pool)
 	local survived = {}
 
 	for s = 1,#pool.species do
@@ -741,10 +914,10 @@ function removeStaleSpecies()
 	pool.species = survived
 end
 
-function removeWeakSpecies()
+function removeWeakSpecies(pool)
 	local survived = {}
 
-	local sum = totalAverageFitness()
+	local sum = totalAverageFitness(pool)
 	for s = 1,#pool.species do
 		local species = pool.species[s]
 		breed = math.floor(species.averageFitness / sum * Population)
@@ -757,7 +930,7 @@ function removeWeakSpecies()
 end
 
 
-function addToSpecies(child)
+function addToSpecies(pool, child)
 	local foundSpecies = false
 	for s=1,#pool.species do
 		local species = pool.species[s]
@@ -774,46 +947,52 @@ function addToSpecies(child)
 	end
 end
 
-function newGeneration()
-	cullSpecies(false) -- Cull the bottom half of each species
-	rankGlobally()
-	removeStaleSpecies()
-	rankGlobally()
+function newGeneration(pool)
+	cullSpecies(pool,false) -- Cull the bottom half of each species
+	rankGlobally(pool)
+	removeStaleSpecies(pool)
+	rankGlobally(pool)
 	for s = 1,#pool.species do
 		local species = pool.species[s]
 		calculateAverageFitness(species)
 	end
-	removeWeakSpecies()
-	local sum = totalAverageFitness()
+	removeWeakSpecies(pool)
+	local sum = totalAverageFitness(pool)
 	local children = {}
 	for s = 1,#pool.species do
 		local species = pool.species[s]
 		breed = math.floor(species.averageFitness / sum * Population) - 1
 		for i=1,breed do
-			table.insert(children, breedChild(species))
+			table.insert(children, breedChild(pool, species))
 		end
 	end
-	cullSpecies(true) -- Cull all but the top member of each species
+	cullSpecies(pool, true) -- Cull all but the top member of each species
 	while #children + #pool.species < Population do
 		local species = pool.species[math.random(1, #pool.species)]
-		table.insert(children, breedChild(species))
+		table.insert(children, breedChild(pool, species))
 	end
 	for c=1,#children do
 		local child = children[c]
-		addToSpecies(child)
+		addToSpecies(pool, child)
 	end
 	
 	pool.generation = pool.generation + 1
 	
-	writeFile("backup." .. pool.generation .. "." .. forms.gettext(saveLoadFile))
+	writeFile(pool, "backup." .. pool.generation .. "." .. forms.gettext(saveLoadFile))
 end
 	
 function initializePool()
-	pool = newPool()
+	--Split pool into two organisms, the player pool and the predictor pool.  This will make fitness checking easier and gene creation independent for the two.
+	playpool = newPool()
+	playpool.memorySize = 0
+	predpool = newPool()
+	predpool.memorySize = MemorySize
 
 	for i=1,Population do
-		basic = basicGenome()
-		addToSpecies(basic)
+		playbasic = basicGenome(playpool)
+		predbasic = basicGenome(predpool)
+		addToSpecies(playpool, playbasic)
+		addToSpecies(predpool, predbasic)
 	end
 
 	initializeRun()
@@ -830,22 +1009,47 @@ end
 function initializeRun()
 	savestate.load(Filename);
 	rightmost = 0
-	pool.currentFrame = 0
+	playpool.currentFrame = 0
+	predpool.currentFrame = 0
 	timeout = TimeoutConstant
 	clearJoypad()
 	
-	local species = pool.species[pool.currentSpecies]
-	local genome = species.genomes[pool.currentGenome]
-	generateNetwork(genome)
+	--Initialize networks for both the player pool and predictor pool.
+	local playspecies = playpool.species[playpool.currentSpecies]
+	local playgenome = playspecies.genomes[playpool.currentGenome]
+	generatePerceptualNetwork(playgenome)
+	local predspecies = predpool.species[predpool.currentSpecies]
+	predgenome = predspecies.genomes[predpool.currentGenome]
+	generatePredictiveNetwork(predgenome)
+
+	inputs = getInputs()
+	table.insert(inputs, 1)
+	if #inputs ~= Inputs then
+		console.writeline("Incorrect number of neural network inputs.")
+		return {}
+	end
+
+	--Initialize all memory frames to starting frame position
+	for m=1,MemorySize+1 do
+		for i=1,Inputs do
+			predgenome.network.neurons[(m-1)*Inputs+(m-1)*Outputs+i].value = inputs[i]
+		end
+	end
+
+	predgenome.fitness = 0
+	predgenome.fitbits = 0
+	prediction = evaluatePredictiveNetwork(predgenome.network, playgenome.network)
+
 	evaluateCurrent()
 end
 
 function evaluateCurrent()
-	local species = pool.species[pool.currentSpecies]
-	local genome = species.genomes[pool.currentGenome]
+	local playspecies = playpool.species[playpool.currentSpecies]
+	local playgenome = playspecies.genomes[playpool.currentGenome]
 
 	inputs = getInputs()
-	controller = evaluateNetwork(genome.network, inputs)
+
+	controller = evaluatePerceptualNetwork(playgenome.network, inputs)
 	
 	if controller["P1 Left"] and controller["P1 Right"] then
 		controller["P1 Left"] = false
@@ -857,33 +1061,45 @@ function evaluateCurrent()
 	end
 
 	joypad.set(controller)
+
+	local tempfitbits = predgenome.fitbits
+	local unfitness = 0
+	for n=1,Inputs+Outputs do
+		if predgenome.network.neurons[n].value ~= 0 then
+			predgenome.fitbits = predgenome.fitbits + 1
+			unfitness = unfitness + math.abs(predgenome.network.neurons[n].value - prediction[n])
+		end
+	end
+	predgenome.fitness = predgenome.fitness + (predgenome.fitbits - tempfitbits - unfitness)
+
+	prediction = evaluatePredictiveNetwork(predgenome.network, playgenome.network)
+
 end
 
-if pool == nil then
+if playpool == nil or predpool == nil then
 	initializePool()
 end
 
-
-function nextGenome()
+function nextGenome(pool)
 	pool.currentGenome = pool.currentGenome + 1
 	if pool.currentGenome > #pool.species[pool.currentSpecies].genomes then
 		pool.currentGenome = 1
 		pool.currentSpecies = pool.currentSpecies+1
 		if pool.currentSpecies > #pool.species then
-			newGeneration()
+			newGeneration(pool)
 			pool.currentSpecies = 1
 		end
 	end
 end
 
-function fitnessAlreadyMeasured()
+function fitnessAlreadyMeasured(pool)
 	local species = pool.species[pool.currentSpecies]
 	local genome = species.genomes[pool.currentGenome]
 	
 	return genome.fitness ~= 0
 end
 
-function displayGenome(genome)
+function displayPlayGenome(genome)
 	local network = genome.network
 	local cells = {}
 	local i = 1
@@ -1010,10 +1226,181 @@ function displayGenome(genome)
 	end
 end
 
-function writeFile(filename)
+function displayPredGenome(genome)
+	local network = genome.network
+	local cells = {}
+	local i = 1
+	local cell = {}
+
+	for dy=-BoxRadius,BoxRadius do
+		for dx=-BoxRadius,BoxRadius do
+			cell = {}
+			cell.x = 40+5*dx
+			cell.y = 70+5*dy
+			cell.value = network.neurons[Inputs+Outputs+i].value
+			cells[i] = cell
+			i = i + 1
+		end
+	end
+
+	for m=1,MemorySize-1 do
+		i = 1
+		for dy=-BoxRadius,BoxRadius do
+			for dx=-BoxRadius,BoxRadius do
+				cell = {}
+				cell.x = 40+5*dx
+				cell.y = 70+5*dy
+				cell.value = network.neurons[(m+1)*(Inputs+Outputs)+i].value
+				cell.age = m
+				cells[m*(Inputs+Outputs)+i] = cell
+				i = i + 1
+			end
+		end
+	end
+
+	local biasCell = {}
+	biasCell.x = 70
+	biasCell.y = 110
+	biasCell.value = network.neurons[2*Inputs+Outputs].value
+	cells[Inputs] = biasCell
+
+	i = 1
+	for dy=-BoxRadius,BoxRadius do
+		for dx=-BoxRadius,BoxRadius do
+			cell = {}
+			cell.x = 210+5*dx
+			cell.y = 70+5*dy
+			cell.value = network.neurons[MaxNodes+i].value
+			cells[MaxNodes+i] = cell
+			i = i + 1
+		end
+	end
+	local biasPCell = {}
+	biasPCell.x = 240
+	biasPCell.y = 110
+	biasPCell.value = network.neurons[MaxNodes+Inputs].value
+	cells[MaxNodes+Inputs] = biasPCell
+	
+	for n,neuron in pairs(network.neurons) do
+		cell = {}
+		if n > Inputs and n <= MaxNodes then
+			cell.x = 140
+			cell.y = 40
+			cell.value = neuron.value
+			cells[n] = cell
+		end
+	end
+	
+	for n=1,4 do
+		for _,gene in pairs(genome.genes) do
+			if gene.enabled then
+				local c1 = cells[gene.into]
+				local c2 = cells[gene.out]
+				if gene.into > Inputs and gene.into <= MaxNodes then
+					c1.x = 0.75*c1.x + 0.25*c2.x
+					if c1.x >= c2.x then
+						c1.x = c1.x - 40
+					end
+					if c1.x < 90 then
+						c1.x = 90
+					end
+					
+					if c1.x > 220 then
+						c1.x = 220
+					end
+					c1.y = 0.75*c1.y + 0.25*c2.y
+					
+				end
+				if gene.out > Inputs and gene.out <= MaxNodes then
+					c2.x = 0.25*c1.x + 0.75*c2.x
+					if c1.x >= c2.x then
+						c2.x = c2.x + 40
+					end
+					if c2.x < 90 then
+						c2.x = 90
+					end
+					if c2.x > 220 then
+						c2.x = 220
+					end
+					c2.y = 0.25*c1.y + 0.75*c2.y
+				end
+			end
+		end
+	end
+	
+	--draw previous frame boxes 
+	gui.drawBox(40-BoxRadius*5-3,70-BoxRadius*5-3,40+BoxRadius*5+2,70+BoxRadius*5+2,0xFF000000, 0x80808080)
+	
+	for n,cell in pairs(cells) do
+		if n > (MemorySize+1)*(Inputs+Outputs) or cell.value ~= 0 then
+			local color = math.floor((cell.value+1)/2*256)
+			if color > 255 then color = 255 end
+			if color < 0 then color = 0 end
+			local opacity = 0xFF000000
+			if cell.value == 0 then
+				opacity = 0x50000000
+			end
+			--draw ghost cells for previous frames in memory
+			if cell.age then
+				opacity = 0x5000000/(2^cell.age)
+			end
+
+			color = opacity + color*0x10000 + color*0x100 + color
+			gui.drawBox(cell.x-2,cell.y-2,cell.x+2,cell.y+2,opacity,color)
+		end
+	end
+
+	--draw prediction frame cells
+	gui.drawBox(210-BoxRadius*5-3,70-BoxRadius*5-3,210+BoxRadius*5+2,70+BoxRadius*5+2,0xFF000000, 0x80808080)
+	for n,cell in pairs(cells) do
+		if n > MaxNodes then
+			local color = math.floor((cell.value+1)/2*256)
+			if color > 255 then color = 255 end
+			if color < 0 then color = 0 end
+			local opacity = 0xFF000000
+			if cell.value == 0 then
+				opacity = 0x50000000
+			end
+			color = opacity + color*0x10000 + color*0x100 + color
+			gui.drawBox(cell.x-2,cell.y-2,cell.x+2,cell.y+2,opacity,color)
+		end
+	end
+
+	for _,gene in pairs(genome.genes) do
+		if gene.enabled then
+			local c1 = cells[gene.into]
+			local c2 = cells[gene.out]
+			local opacity = 0xA0000000
+			if c1.value == 0 then
+				opacity = 0x20000000
+			end
+			
+			local color = 0x80-math.floor(math.abs(sigmoid(gene.weight))*0x80)
+			if gene.weight > 0 then 
+				color = opacity + 0x8000 + 0x10000*color
+			else
+				color = opacity + 0x800000 + 0x100*color
+			end
+			gui.drawLine(c1.x+1, c1.y, c2.x-3, c2.y, color)
+		end
+	end
+	
+	gui.drawBox(49,71,51,78,0x00000000,0x80FF0000)
+	
+	if forms.ischecked(showMutationRates) then
+		local pos = 100
+		for mutation,rate in pairs(genome.mutationRates) do
+			gui.drawText(100, pos, mutation .. ": " .. rate, 0xFF000000, 10)
+			pos = pos + 8
+		end
+	end
+end
+
+function writeFile(pool, filename)
         local file = io.open(filename, "w")
 	file:write(pool.generation .. "\n")
 	file:write(pool.maxFitness .. "\n")
+	file:write(pool.memorySize .. "\n")
 	file:write(#pool.species .. "\n")
         for n,species in pairs(pool.species) do
 		file:write(species.topFitness .. "\n")
@@ -1047,14 +1434,19 @@ end
 
 function savePool()
 	local filename = forms.gettext(saveLoadFile)
-	writeFile(filename)
+	local pool = playpool
+	if forms.ischecked(refPred) then
+		pool = predpool
+	end
+	writeFile(pool, filename)
 end
 
 function loadFile(filename)
-        local file = io.open(filename, "r")
-	pool = newPool()
+    local file = io.open(filename, "r")
+	local pool = newPool()
 	pool.generation = file:read("*number")
 	pool.maxFitness = file:read("*number")
+	pool.memorySize = file:read("*number")
 	forms.settext(maxFitnessLabel, "Max Fitness: " .. math.floor(pool.maxFitness))
         local numSpecies = file:read("*number")
         for s=1,numSpecies do
@@ -1090,11 +1482,20 @@ function loadFile(filename)
 	end
         file:close()
 	
-	while fitnessAlreadyMeasured() do
-		nextGenome()
-	end
-	initializeRun()
-	pool.currentFrame = pool.currentFrame + 1
+    if forms.ischecked(refPred) then
+    	predpool = pool
+    	while fitnessAlreadyMeasured(predpool) do
+			nextGenome(predpool)
+		end
+		initializeRun()
+    else
+    	playpool = pool
+    	while fitnessAlreadyMeasured(playpool) do
+			nextGenome(playpool)
+		end
+		initializeRun()
+    end
+    playpool.currentFrame = playpool.currentFrame + 1
 end
  
 function loadPool()
@@ -1128,21 +1529,22 @@ function onExit()
 	forms.destroy(form)
 end
 
-writeFile("temp.pool")
+writeFile(playpool,"temp.pool")
 
 event.onexit(onExit)
 
-form = forms.newform(200, 260, "Fitness")
-maxFitnessLabel = forms.label(form, "Max Fitness: " .. math.floor(pool.maxFitness), 5, 8)
-showNetwork = forms.checkbox(form, "Show Map", 5, 30)
-showMutationRates = forms.checkbox(form, "Show M-Rates", 5, 52)
-restartButton = forms.button(form, "Restart", initializePool, 5, 77)
-saveButton = forms.button(form, "Save", savePool, 5, 102)
-loadButton = forms.button(form, "Load", loadPool, 80, 102)
-saveLoadFile = forms.textbox(form, Filename .. ".pool", 170, 25, nil, 5, 148)
-saveLoadLabel = forms.label(form, "Save/Load:", 5, 129)
-playTopButton = forms.button(form, "Play Top", playTop, 5, 170)
-hideBanner = forms.checkbox(form, "Hide Banner", 5, 190)
+form = forms.newform(200, 290, "Fitness")
+maxFitnessLabel = forms.label(form, "Max Fitness: " .. math.floor(playpool.maxFitness), 5, 8)
+refPred = forms.checkbox(form, "Show Pred", 5, 38)
+showNetwork = forms.checkbox(form, "Show Map", 5, 60)
+showMutationRates = forms.checkbox(form, "Show M-Rates", 5, 82)
+restartButton = forms.button(form, "Restart", initializePool, 5, 107)
+saveButton = forms.button(form, "Save", savePool, 5, 132)
+loadButton = forms.button(form, "Load", loadPool, 80, 132)
+saveLoadFile = forms.textbox(form, Filename .. ".pool", 170, 25, nil, 5, 178)
+saveLoadLabel = forms.label(form, "Save/Load:", 5, 159)
+playTopButton = forms.button(form, "Play Top", playTop, 5, 205)
+hideBanner = forms.checkbox(form, "Hide Banner", 5, 230)
 
 
 while true do
@@ -1151,15 +1553,22 @@ while true do
 		gui.drawBox(0, 0, 300, 26, backgroundColor, backgroundColor)
 	end
 
-	local species = pool.species[pool.currentSpecies]
-	local genome = species.genomes[pool.currentGenome]
+	local playspecies = playpool.species[playpool.currentSpecies]
+	local playgenome = playspecies.genomes[playpool.currentGenome]
+
+	local predspecies = predpool.species[predpool.currentSpecies]
+	predgenome = predspecies.genomes[predpool.currentGenome]
 	
 	if forms.ischecked(showNetwork) then
-		displayGenome(genome)
+		if forms.ischecked(refPred) and playpool.currentFrame > 0 then
+			displayPredGenome(predgenome)
+		else
+			displayPlayGenome(playgenome)
+		end
 	end
-	
-	if pool.currentFrame%5 == 0 then
-		evaluateCurrent()
+
+	if playpool.currentFrame%5 == 0 then
+		evaluateCurrent() 
 	end
 
 	joypad.set(controller)
@@ -1173,38 +1582,64 @@ while true do
 	timeout = timeout - 1
 	
 	
-	local timeoutBonus = pool.currentFrame / 4
+	local timeoutBonus = playpool.currentFrame / 4
+
 	if timeout + timeoutBonus <= 0 then
-		local fitness = rightmost - pool.currentFrame / 2
+
+		--When time is up, calculate player genome fitness
+		local fitness = rightmost - playpool.currentFrame / 2
+
+		--Add fitness bonus for beating the level
 		if gameinfo.getromname() == "Super Mario World (USA)" and rightmost > 4816 then
 			fitness = fitness + 1000
 		end
 		if gameinfo.getromname() == "Super Mario Bros. (W) [!]" and rightmost > 3186 then
 			fitness = fitness + 1000
 		end
+
+		--Make a fitness of 0 less favorable
 		if fitness == 0 then
 			fitness = -1
 		end
-		genome.fitness = fitness
+
+		--Log genome fitness in the genome's table
+		playgenome.fitness = fitness
 		
-		if fitness > pool.maxFitness then
-			pool.maxFitness = fitness
-			forms.settext(maxFitnessLabel, "Max Fitness: " .. math.floor(pool.maxFitness))
-			writeFile("backup." .. pool.generation .. "." .. forms.gettext(saveLoadFile))
+		--Update maximum fitness when ceiling is broken
+		if fitness > playpool.maxFitness then
+			playpool.maxFitness = fitness
+			forms.settext(maxFitnessLabel, "Max Fitness: " .. math.floor(playpool.maxFitness))
+			writeFile(playpool, "backup." .. playpool.generation .. "." .. forms.gettext(saveLoadFile))
 		end
 		
-		console.writeline("Gen " .. pool.generation .. " species " .. pool.currentSpecies .. " genome " .. pool.currentGenome .. " fitness: " .. fitness)
-		pool.currentSpecies = 1
-		pool.currentGenome = 1
-		while fitnessAlreadyMeasured() do
-			nextGenome()
+		if predgenome.fitness > predpool.maxFitness then
+			predpool.maxFitness = predgenome.fitness
+			forms.settext(maxFitnessLabel, "Max Fitness: " .. math.floor(predpool.maxFitness))
+			writeFile(predpool, "backup." .. predpool.generation .. "." .. forms.gettext(saveLoadFile))
 		end
+
+		--Write out current run statistics
+		console.writeline("Gen " .. predpool.generation .. " species " .. predpool.currentSpecies .. " genome " .. predpool.currentGenome .. " fitness: " .. predgenome.fitness)
+		playpool.currentSpecies = 1
+		playpool.currentGenome = 1
+
+		predpool.currentSpecies = 1
+		predpool.currentGenome = 1
+
+		--iterate over play and pred genomes until genome without fitness measurement
+		while fitnessAlreadyMeasured(playpool) do
+			nextGenome(playpool)
+		end
+		while fitnessAlreadyMeasured(predpool) do
+			nextGenome(predpool)
+		end
+
 		initializeRun()
 	end
 
 	local measured = 0
 	local total = 0
-	for _,species in pairs(pool.species) do
+	for _,species in pairs(playpool.species) do
 		for _,genome in pairs(species.genomes) do
 			total = total + 1
 			if genome.fitness ~= 0 then
@@ -1213,12 +1648,12 @@ while true do
 		end
 	end
 	if not forms.ischecked(hideBanner) then
-		gui.drawText(0, 0, "Gen " .. pool.generation .. " species " .. pool.currentSpecies .. " genome " .. pool.currentGenome .. " (" .. math.floor(measured/total*100) .. "%)", 0xFF000000, 11)
-		gui.drawText(0, 12, "Fitness: " .. math.floor(rightmost - (pool.currentFrame) / 2 - (timeout + timeoutBonus)*2/3), 0xFF000000, 11)
-		gui.drawText(100, 12, "Max Fitness: " .. math.floor(pool.maxFitness), 0xFF000000, 11)
+		gui.drawText(0, 0, "Gen " .. playpool.generation .. " species " .. playpool.currentSpecies .. " genome " .. playpool.currentGenome .. " (" .. math.floor(measured/total*100) .. "%)", 0xFF000000, 11)
+		gui.drawText(0, 12, "Fitness: " .. math.floor(rightmost - (playpool.currentFrame) / 2 - (timeout + timeoutBonus)*2/3), 0xFF000000, 11)
+		gui.drawText(100, 12, "Max Fitness: " .. math.floor(playpool.maxFitness), 0xFF000000, 11)
 	end
 		
-	pool.currentFrame = pool.currentFrame + 1
+	playpool.currentFrame = playpool.currentFrame + 1
 
 	emu.frameadvance();
 end

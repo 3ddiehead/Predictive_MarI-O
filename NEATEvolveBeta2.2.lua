@@ -1036,7 +1036,7 @@ function initializeRun()
 		end
 	end
 
-	predgenome.fitness = 0
+	predgenome.fitness = 1
 	predgenome.fitbits = 0
 	prediction = evaluatePredictiveNetwork(predgenome.network, playgenome.network)
 

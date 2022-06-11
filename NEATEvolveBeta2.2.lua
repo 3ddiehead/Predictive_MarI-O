@@ -1232,7 +1232,8 @@ function displayPredGenome(genome)
 	local cells = {}
 	local i = 1
 	local cell = {}
-
+	
+	--Add values for most recent input frame cells
 	for dy=-BoxRadius,BoxRadius do
 		for dx=-BoxRadius,BoxRadius do
 			cell = {}
@@ -1243,7 +1244,8 @@ function displayPredGenome(genome)
 			i = i + 1
 		end
 	end
-
+	
+	--Add values for memory input frame cells
 	for m=1,MemorySize-1 do
 		i = 1
 		for dy=-BoxRadius,BoxRadius do
@@ -1259,12 +1261,14 @@ function displayPredGenome(genome)
 		end
 	end
 
+	--Add value for bias cell
 	local biasCell = {}
 	biasCell.x = 70
 	biasCell.y = 110
 	biasCell.value = network.neurons[2*Inputs+Outputs].value
 	cells[Inputs] = biasCell
 
+	--Add values to prediction output cells
 	i = 1
 	for dy=-BoxRadius,BoxRadius do
 		for dx=-BoxRadius,BoxRadius do
@@ -1276,11 +1280,26 @@ function displayPredGenome(genome)
 			i = i + 1
 		end
 	end
+	
+	--Add value for prediction bias cell
 	local biasPCell = {}
 	biasPCell.x = 240
 	biasPCell.y = 110
 	biasPCell.value = network.neurons[MaxNodes+Inputs].value
 	cells[MaxNodes+Inputs] = biasPCell
+	
+	--Add values for differential cells
+	i = 1
+	for dy=-BoxRadius,BoxRadius do
+		for dx=-BoxRadius,BoxRadius do
+			cell = {}
+			cell.x = 210+5*dx
+			cell.y = 110+5*dy
+			cell.value = network.neurons[MaxNodes+Inputs+i].value
+			cells[MaxNodes+Inputs+i] = cell
+			i = i + 1
+		end
+	end
 	
 	for n,neuron in pairs(network.neurons) do
 		cell = {}
@@ -1352,9 +1371,9 @@ function displayPredGenome(genome)
 	end
 
 	--draw prediction frame cells
-	gui.drawBox(210-BoxRadius*5-3,70-BoxRadius*5-3,210+BoxRadius*5+2,70+BoxRadius*5+2,0xFF000000, 0x80808080)
+	gui.drawBox(210-BoxRadius*5-3,110-BoxRadius*5-3,210+BoxRadius*5+2,110+BoxRadius*5+2,0xFF000000, 0x80808080)
 	for n,cell in pairs(cells) do
-		if n > MaxNodes then
+		if n > MaxNodes >= MaxNodes+Inputs then
 			local color = math.floor((cell.value+1)/2*256)
 			if color > 255 then color = 255 end
 			if color < 0 then color = 0 end
@@ -1367,6 +1386,24 @@ function displayPredGenome(genome)
 		end
 	end
 
+	--draw differential frame cells
+	if forms.ischecked(showDiffGrid) then
+		gui.drawBox(210-BoxRadius*5-3,110-BoxRadius*5-3,210+BoxRadius*5+2,110+BoxRadius*5+2,0xFF000000, 0x80808080)
+		for n,cell in pairs(cells) do
+			if n > MaxNodes+Inputs then
+				local color = math.floor((cell.value+1)/2*256)
+				if color > 255 then color = 255 end
+				if color < 0 then color = 0 end
+				local opacity = 0xFF000000
+				if cell.value == 0 then
+					opacity = 0x50000000
+				end
+				color = opacity + color*0x10000 + color*0x100 + color
+				gui.drawBox(cell.x-2,cell.y-2,cell.x+2,cell.y+2,opacity,color)
+			end
+		end
+	end
+	
 	for _,gene in pairs(genome.genes) do
 		if gene.enabled then
 			local c1 = cells[gene.into]
@@ -1536,16 +1573,17 @@ event.onexit(onExit)
 
 form = forms.newform(200, 290, "Fitness")
 maxFitnessLabel = forms.label(form, "Max Fitness: " .. math.floor(playpool.maxFitness), 5, 8)
-refPred = forms.checkbox(form, "Show Pred", 5, 38)
-showNetwork = forms.checkbox(form, "Show Map", 5, 60)
-showMutationRates = forms.checkbox(form, "Show M-Rates", 5, 82)
-restartButton = forms.button(form, "Restart", initializePool, 5, 107)
-saveButton = forms.button(form, "Save", savePool, 5, 132)
-loadButton = forms.button(form, "Load", loadPool, 80, 132)
+refPred = forms.checkbox(form, "Show Pred", 5, 30)
+showNetwork = forms.checkbox(form, "Show Map", 5, 52)
+showDiffGrid = forms.checkbox(form, "Show PDiff", 5, 74)
+showMutationRates = forms.checkbox(form, "Show M-Rates", 5, 96)
+restartButton = forms.button(form, "Restart", initializePool, 5, 130)
+saveButton = forms.button(form, "Save", savePool, 5, 152)
+loadButton = forms.button(form, "Load", loadPool, 80, 152)
 saveLoadFile = forms.textbox(form, Filename .. ".pool", 170, 25, nil, 5, 178)
-saveLoadLabel = forms.label(form, "Save/Load:", 5, 159)
-playTopButton = forms.button(form, "Play Top", playTop, 5, 205)
-hideBanner = forms.checkbox(form, "Hide Banner", 5, 230)
+saveLoadLabel = forms.label(form, "Save/Load:", 5, 200)
+playTopButton = forms.button(form, "Play Top", playTop, 5, 225)
+hideBanner = forms.checkbox(form, "Hide Banner", 5, 250)
 
 
 while true do
